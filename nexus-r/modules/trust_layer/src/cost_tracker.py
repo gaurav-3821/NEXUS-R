@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime, timezone
 
 from nexus_r.events import Event, PermissionTier
@@ -24,14 +23,15 @@ class CostTracker:
         await self.event_store.append(event)
 
     async def summary(self) -> dict[str, object]:
-        totals = defaultdict(float)
-        per_task = defaultdict(float)
+        totals: dict[str, float] = {"total_cost": 0.0}
+        per_task: dict[str, float] = {}
         for event in await self.event_store.get_by_type("cost_recorded"):
             amount = float(event.data["amount"])
-            totals["total"] += amount
-            totals[f"tier_{event.data['tier']}"] += amount
-            totals[f"model_{event.data['model']}"] += amount
-            per_task[event.data["task_id"]] += amount
+            totals["total_cost"] += amount
+            totals[f"tier_{event.data['tier']}"] = totals.get(f"tier_{event.data['tier']}", 0.0) + amount
+            totals[f"model_{event.data['model']}"] = totals.get(f"model_{event.data['model']}", 0.0) + amount
+            task_id = event.data["task_id"]
+            per_task[task_id] = per_task.get(task_id, 0.0) + amount
         return {
             "totals": dict(totals),
             "per_task": dict(per_task),
