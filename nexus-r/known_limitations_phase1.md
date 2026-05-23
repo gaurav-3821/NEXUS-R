@@ -10,9 +10,15 @@
 ## Runtime Limitations
 
 1. Cold local-model latency is high. The first real `hello` request took seconds, not milliseconds.
+   A fire-and-forget model warm-up runs during CLI startup to preload LiteLLM,
+   reducing the first visible task latency.
 2. Concurrency remains stable but slow because Ollama inference is the dominant bottleneck.
 3. EventStore batch performance is strong, but strict synchronous single-append latency still misses the `<1 ms` target.
 4. CLI responsiveness is acceptable for admin commands, but cold `run` latency is dominated by model load.
+5. Memory grows ~3× during heavy use (61 MB startup → ~200 MB steady state) due to
+   SQLite WAL cache (`PRAGMA cache_size=-64000` = ~64 MB) and telemetry buffer accumulation.
+   Growth plateaus at ~200 MB. This is a bounded cache, not an unbounded leak.
+   Configurable via `NEXUSConfig.DatabaseSettings.sqlite_cache_size_mb` (default 50) — fix scheduled for Phase 2.
 
 ## Security Limitations
 

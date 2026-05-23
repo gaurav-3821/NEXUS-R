@@ -101,9 +101,10 @@ class PermissionDecision(BaseModel):
 
 
 class EventStore:
-    def __init__(self, db_path: str | Path, telemetry: RuntimeTelemetry | None = None) -> None:
+    def __init__(self, db_path: str | Path, telemetry: RuntimeTelemetry | None = None, cache_size_mb: int = 50) -> None:
         self.db_path = str(Path(db_path))
         self.telemetry = telemetry
+        self._cache_size_mb = max(1, min(500, cache_size_mb))
         self._initialized = False
         self._init_lock = asyncio.Lock()
         self._write_lock = asyncio.Lock()
@@ -410,7 +411,7 @@ class EventStore:
         await db.execute("PRAGMA busy_timeout=5000")
         await db.execute("PRAGMA synchronous=NORMAL")
         await db.execute("PRAGMA temp_store=MEMORY")
-        await db.execute("PRAGMA cache_size=-64000")
+        await db.execute(f"PRAGMA cache_size={-self._cache_size_mb * 1024}")
         await db.execute("PRAGMA wal_autocheckpoint=1000")
         return db
 

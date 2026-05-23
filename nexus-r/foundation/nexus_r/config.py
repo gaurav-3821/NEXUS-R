@@ -9,14 +9,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class ModelSettings(BaseModel):
     local_model: str = "ollama/qwen2.5:1.5b-instruct"
     local_fallback_model: str = "mock-local"
-    byok_model: str = "gpt-4o-mini"
+    byok_model: str = "groq/llama-3.3-70b-versatile"
     byok_fallback_model: str = "mock-byok"
     local_api_base: str = "http://127.0.0.1:11434"
     local_cost_per_call: float = 0.001
     byok_cost_per_call: float = 0.02
     complexity_threshold: float = 0.65
     byok_api_key_env: str = "NEXUS_BYOK_API_KEY"
-    byok_secret_name: str = "openai_api_key"
+    byok_secret_name: str = "groq_api_key"
     provider_timeout_seconds: int = 120
     stream_timeout_seconds: int = 120
     provider_max_concurrency: int = 4
@@ -36,6 +36,7 @@ class SandboxSettings(BaseModel):
 class DatabaseSettings(BaseModel):
     path: Path
     compact_after_days: int = 30
+    sqlite_cache_size_mb: int = 50
 
 
 class ObservabilitySettings(BaseModel):
