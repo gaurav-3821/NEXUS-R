@@ -1,0 +1,5 @@
+name: session_manager
+status: active
+phase: 1.5
+planned_exports:
+  - SessionManager

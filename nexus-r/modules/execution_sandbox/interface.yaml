@@ -1,0 +1,7 @@
+name: execution_sandbox
+exports:
+  - ExecutionSandbox
+depends_on:
+  - nexus_r.events
+  - state_core
+  - trust_layer

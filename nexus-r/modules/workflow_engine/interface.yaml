@@ -1,0 +1,7 @@
+name: workflow_engine
+exports:
+  - TraceRecorder
+  - TraceAnalyzer
+depends_on:
+  - nexus_r.events
+  - state_core

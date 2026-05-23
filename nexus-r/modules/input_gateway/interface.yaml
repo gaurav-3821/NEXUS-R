@@ -1,0 +1,8 @@
+name: input_gateway
+exports:
+  - IntentParser
+  - TaskClassifier
+  - ParameterExtractor
+depends_on:
+  - nexus_r.events
+  - nexus_r.config

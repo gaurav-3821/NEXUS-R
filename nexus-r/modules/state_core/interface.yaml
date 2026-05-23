@@ -1,0 +1,6 @@
+name: state_core
+exports:
+  - EventStore
+  - WorkingStateStore
+depends_on:
+  - nexus_r.events

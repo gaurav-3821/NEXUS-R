@@ -1,0 +1,8 @@
+name: trust_layer
+exports:
+  - PermissionEnforcer
+  - CostTracker
+  - SecretRegistry
+depends_on:
+  - nexus_r.events
+  - state_core

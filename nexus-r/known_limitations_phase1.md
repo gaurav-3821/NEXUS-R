@@ -1,0 +1,28 @@
+# Known Limitations
+
+## Functional Limitations
+
+1. BYOK execution is still unverified because no real provider API key was available on May 23, 2026.
+2. The local model path is real, but the current 2-tier fallback proof stops at `local -> mock` in practice on this machine.
+3. The classifier is still heuristic. It is better than before, but it is not robust against varied natural-language phrasing.
+4. Search and file operations are Phase 1-simple and not policy-rich.
+
+## Runtime Limitations
+
+1. Cold local-model latency is high. The first real `hello` request took seconds, not milliseconds.
+2. Concurrency remains stable but slow because Ollama inference is the dominant bottleneck.
+3. EventStore batch performance is strong, but strict synchronous single-append latency still misses the `<1 ms` target.
+4. CLI responsiveness is acceptable for admin commands, but cold `run` latency is dominated by model load.
+
+## Security Limitations
+
+1. Identity encryption is still development-grade only.
+2. Corrupted identity ciphertext still raises `InvalidToken` instead of a controlled recovery flow.
+3. Session state files exist in the repo from prior work and remain out of Phase 1 scope.
+4. Prompt injection is reduced by architecture and task gating, not solved.
+
+## Validation Limitations
+
+1. Real BYOK fallback was not proven.
+2. Fake-server failure tests fail closed, but they currently collapse to a generic `No providers or mock fallbacks are available` surface instead of rich provider-specific errors.
+3. Mid-inference persistence was partially observed through task state and post-completion provider events, but the exact mid-flight provider-invocation visibility is still timing-sensitive.

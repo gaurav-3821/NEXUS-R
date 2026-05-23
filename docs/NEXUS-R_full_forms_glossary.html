@@ -1,0 +1,158 @@
+
+<h2 class="sr-only">NEXUS-R Full Forms & Glossary — all acronyms and abbreviations from the specification document</h2>
+<style>
+:root { --accent: #534AB7; --accent-light: #EEEDFE; --accent-mid: #7F77DD; }
+body { margin: 0; }
+.wrap { padding: 1rem 0 2rem; font-family: var(--font-sans); }
+.hero { display: flex; align-items: baseline; gap: 12px; margin-bottom: 4px; }
+.hero-title { font-size: 20px; font-weight: 500; color: var(--color-text-primary); }
+.hero-sub { font-size: 13px; color: var(--color-text-secondary); }
+.search-row { display: flex; gap: 8px; margin: 14px 0 10px; }
+.search-row input { flex: 1; padding: 7px 12px; border: 1px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-secondary); color: var(--color-text-primary); font-size: 14px; font-family: var(--font-sans); outline: none; }
+.search-row input:focus { border-color: var(--accent-mid); }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.pill { padding: 3px 10px; border-radius: 20px; font-size: 12px; cursor: pointer; border: 1px solid var(--color-border-secondary); color: var(--color-text-secondary); background: var(--color-background-secondary); transition: all .15s; user-select: none; }
+.pill.active { background: var(--accent-light); border-color: var(--accent-mid); color: #3C3489; }
+@media (prefers-color-scheme: dark) { .pill.active { background: #26215C; border-color: #7F77DD; color: #AFA9EC; } }
+.count { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 8px; }
+.card { display: grid; grid-template-columns: 160px 1fr; align-items: start; gap: 0; border-bottom: 1px solid var(--color-border-tertiary); padding: 12px 0; }
+.card:last-child { border-bottom: none; }
+.abbr-block { }
+.abbr { font-size: 15px; font-weight: 500; color: var(--color-text-primary); font-family: var(--font-mono); letter-spacing: .02em; }
+.tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 10px; margin-top: 4px; font-weight: 500; }
+.tag-core    { background: #EEEDFE; color: #3C3489; }
+.tag-tech    { background: #E1F5EE; color: #085041; }
+.tag-sec     { background: #FAECE7; color: #4A1B0C; }
+.tag-arch    { background: #E6F1FB; color: #042C53; }
+.tag-dev     { background: #FAEEDA; color: #412402; }
+@media (prefers-color-scheme: dark) {
+  .tag-core { background: #26215C; color: #EEEDFE; }
+  .tag-tech { background: #04342C; color: #E1F5EE; }
+  .tag-sec  { background: #4A1B0C; color: #FAECE7; }
+  .tag-arch { background: #042C53; color: #E6F1FB; }
+  .tag-dev  { background: #412402; color: #FAEEDA; }
+}
+.full { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 3px; }
+.desc { font-size: 13px; color: var(--color-text-secondary); line-height: 1.55; }
+.note { font-size: 11px; color: var(--color-text-tertiary); margin-top: 3px; font-style: italic; }
+.hidden { display: none; }
+.section-label { font-size: 11px; font-weight: 500; letter-spacing: .08em; color: var(--color-text-tertiary); text-transform: uppercase; margin: 20px 0 6px; padding-bottom: 6px; border-bottom: 1px solid var(--color-border-tertiary); }
+.no-results { text-align: center; padding: 32px 0; color: var(--color-text-tertiary); font-size: 14px; }
+</style>
+<div class="wrap">
+  <div class="hero">
+    <span class="hero-title">NEXUS-R — Full Forms & Glossary</span>
+    <span class="hero-sub">All acronyms & abbreviations from the specification</span>
+  </div>
+  <div class="search-row">
+    <input type="text" id="q" placeholder="Search acronym or meaning…" oninput="render()">
+  </div>
+  <div class="pills">
+    <span class="pill active" data-cat="all" onclick="setcat(this)">All</span>
+    <span class="pill" data-cat="core" onclick="setcat(this)">Core system</span>
+    <span class="pill" data-cat="arch" onclick="setcat(this)">Architecture</span>
+    <span class="pill" data-cat="tech" onclick="setcat(this)">Technology</span>
+    <span class="pill" data-cat="sec" onclick="setcat(this)">Security</span>
+    <span class="pill" data-cat="dev" onclick="setcat(this)">Development</span>
+  </div>
+  <div class="count" id="count"></div>
+  <div id="list"></div>
+</div>
+
+<script>
+const data = [
+  // CORE SYSTEM
+  { abbr:"NEXUS-R", full:"Next-generation EXecution Unified System — Runtime", cat:"core", desc:"The project name. A personal agent runtime designed to make AI task execution progressively cheaper, more private, and more reliable through intelligent routing and verified workflow reuse.", note:"Project name; 'R' denotes the Runtime edition." },
+  { abbr:"ETD", full:"Execution Trace Distillation", cat:"core", desc:"The central innovation of NEXUS-R. A verified cache of reusable, parameterized execution plans extracted from successful traces. Only admitted if generalization success rate exceeds 90%; applied conservatively when intent similarity exceeds 85%.", note:"Renamed from CPC (Cache of Proven Capabilities) in v7." },
+  { abbr:"CPC", full:"Cache of Proven Capabilities", cat:"core", desc:"The v6 name for what became ETD in v7/v8. Stored proven execution strategies for task reuse. Renamed to ETD to better reflect the distillation process and verified generalization.", note:"Legacy term from NEXUS-R v6; superseded by ETD." },
+  { abbr:"CAR", full:"Capability-Aware Router", cat:"core", desc:"The multi-objective routing engine within the Cognition Router subsystem. Selects the optimal model by weighing capability match, latency, cost, and privacy (hard constraint). Implements a 6-tier adaptive fallback chain.", note:"Part of the Cognition Router subsystem alongside ISE." },
+  { abbr:"ISE", full:"Intelligent Scoring Engine", cat:"core", desc:"The capability-profiling component of the Cognition Router. Maintains and updates ProviderProfiles for each available model based on observed outcomes, feeding dynamic scores into CAR's routing decisions.", note:"Not explicitly expanded in the v8 doc; inferred from v6 module list and functional role." },
+  { abbr:"MCP", full:"Model Context Protocol", cat:"core", desc:"Anthropic's open standard for tool integration. NEXUS-R adopts MCP as its exclusive integration mechanism — no custom connectors are permitted. All tool invocations (terminal, filesystem, browser, APIs) go through MCP.", note:"Defined by Anthropic, 2024. Exclusive integration layer in NEXUS-R." },
+
+  // ARCHITECTURE
+  { abbr:"T1", full:"Tier 1 — Simple / Auto-approved", cat:"arch", desc:"Used in two contexts: (1) Task complexity tier: lowest complexity, simple single-step tasks (e.g. 'what is the capital of France'). (2) Permission tier: read-only operations (read files, ls/cat/grep, web search, safe MCP tools) — auto-approved, no user prompt.", note:"Dual meaning: task complexity AND permission level." },
+  { abbr:"T2", full:"Tier 2 — Moderate / Auto + log", cat:"arch", desc:"(1) Task complexity: moderate reasoning, some tool use. (2) Permission tier: write operations within the workspace (modify workspace files, sandboxed terminal, HTTP GET to approved domains) — auto-approved with logging.", note:"Dual meaning: task complexity AND permission level." },
+  { abbr:"T3", full:"Tier 3 — Complex / User prompt required", cat:"arch", desc:"(1) Task complexity: high reasoning depth and tool complexity. (2) Permission tier: operations with external side effects (arbitrary terminal, external files, HTTP POST/PUT/DELETE, browser actions, API keys) — requires explicit user approval prompt.", note:"Dual meaning: task complexity AND permission level." },
+  { abbr:"T4", full:"Tier 4 — Critical / Explicit confirm + reason", cat:"arch", desc:"(1) Task complexity: highest complexity, frontier-model territory. (2) Permission tier: irreversible operations (delete files, access secrets, deploy to production, financial transactions) — requires explicit confirmation with a documented reason and audit log entry.", note:"Dual meaning: task complexity AND permission level." },
+  { abbr:"BYOK", full:"Bring Your Own Key", cat:"arch", desc:"A model access tier where the user supplies their own API keys for LLM providers. Costs are charged directly to the user's provider account. Offers user control over cost and privacy with no platform markup. Exists as BYOK_budget and BYOK_frontier sub-tiers in the CAR fallback chain.", note:"Used in contrast to 'managed_premium' where the platform covers cost." },
+  { abbr:"ETD Pipeline", full:"Execution Trace Distillation Pipeline", cat:"arch", desc:"The 7-stage process: (1) Trace Recording → (2) Distillation → (3) Generalization Verification → (4) Parameterization & Deduplication → (5) Retrieval → (6) Conservative Application → (7) Invalidation.", note:"Each stage has precise acceptance criteria for agent implementation." },
+
+  // TECHNOLOGY
+  { abbr:"LiteLLM", full:"Lite Large Language Model (proxy/SDK)", cat:"tech", desc:"Open-source Python SDK and proxy server providing a unified OpenAI-compatible interface for 100+ LLM providers. NEXUS-R uses LiteLLM for all model abstraction — no custom provider layer is built.", note:"NEXUS-R design decision: 'Don't build provider abstraction — LiteLLM handles 100+ providers.'" },
+  { abbr:"LLM", full:"Large Language Model", cat:"tech", desc:"AI models trained on large text corpora capable of reasoning, code generation, and instruction following. NEXUS-R routes tasks across multiple LLMs (local 7B/14B/70B and cloud frontier models) based on complexity and cost.", note:"" },
+  { abbr:"ML", full:"Machine Learning", cat:"tech", desc:"Used in NEXUS-R specifically for the ML Risk Classifier — a model that evaluates each proposed action's risk score (action type, target resource, permission scope, user history) before execution. Initially rule-based, later upgraded to a trained model.", note:"Also used in 'ML risk classification' as a general term for the AI-driven security layer." },
+  { abbr:"SQLite", full:"Structured Query Language — lite (embedded database)", cat:"tech", desc:"The local embedded database used by NEXUS-R's State Core (EventStore). Configured in WAL mode for concurrent reads. Stores the immutable, append-only event log with indexes on timestamp, event_type, and parent_event_id.", note:"'lite' refers to the lightweight, serverless nature of SQLite vs. full SQL servers." },
+  { abbr:"SQL", full:"Structured Query Language", cat:"tech", desc:"The query language used to interact with the SQLite EventStore. Referenced in the security audit for SQL injection prevention in EventStore query methods.", note:"" },
+  { abbr:"WAL", full:"Write-Ahead Logging", cat:"tech", desc:"SQLite journal mode used by NEXUS-R's EventStore. WAL allows concurrent reads while a write is in progress, improving throughput for the audit and query operations that run alongside event appends.", note:"Enabled via PRAGMA journal_mode=WAL in SQLite." },
+  { abbr:"API", full:"Application Programming Interface", cat:"tech", desc:"Used extensively: MCP tool APIs, LiteLLM provider APIs, the NEXUS-R third-party REST API (Phase 4), and BYOK provider API keys. The Phase 4 API gateway exposes POST /api/v1/tasks, GET /api/v1/costs, GET /api/v1/audit, and WebSocket /api/v1/ws.", note:"" },
+  { abbr:"REST", full:"Representational State Transfer", cat:"tech", desc:"Architectural style for the Phase 4 third-party API gateway. Endpoints follow REST conventions (resource-based URLs, HTTP verbs for CRUD operations, JSON bodies). Rate limited at 1,000 requests/hour with API key authentication.", note:"" },
+  { abbr:"FAISS", full:"Facebook AI Similarity Search", cat:"tech", desc:"Vector similarity search library used by the State Core's VectorIndex to index and query event embeddings. Enables semantic retrieval of past executions across the entire event history.", note:"Or a similar alternative library — the spec references 'FAISS or similar'." },
+  { abbr:"UUID", full:"Universally Unique Identifier", cat:"tech", desc:"Used as the primary key type for Event IDs and ETD IDs in NEXUS-R. Each event is assigned a UUID to ensure global uniqueness across the append-only EventStore.", note:"Format: RFC 4122 UUID (e.g. etd_a1b2c3 in the ETD data structure example)." },
+  { abbr:"FCM", full:"Firebase Cloud Messaging", cat:"tech", desc:"Push notification service used by the Phase 4 mobile companion backend to deliver cost alerts, escalation approval requests, and task completion notifications to the user's mobile device.", note:"Referenced in the mobile_api.py module spec." },
+  { abbr:"WebSocket", full:"Web Socket (persistent bidirectional protocol)", cat:"tech", desc:"Protocol used for real-time communication between the NEXUS-R web UI and the FastAPI backend. Powers live cost updates during task execution (/ws/costs) and the Phase 4 API real-time task stream (/api/v1/ws).", note:"" },
+
+  // SECURITY
+  { abbr:"XSS", full:"Cross-Site Scripting", cat:"sec", desc:"A web security vulnerability the Phase 2/3 security auditor checks for in the cost dashboard web UI. NEXUS-R mitigates it by structural parsing of all model outputs (never eval()), action allowlisting, and output validation.", note:"Addressed in the Phase 2 security review scope." },
+  { abbr:"SecretRegistry", full:"Secret Registry", cat:"sec", desc:"The internal component (not an acronym but a named system component) that handles credential injection for API calls. Ensures API keys are never exposed to the model layer or logged in audit trails.", note:"Implemented via the keyring OS credential manager library." },
+  { abbr:"ETD Invalidation", full:"ETD Invalidation Triggers", cat:"sec", desc:"Three conditions that remove an ETD from active use: (1) failure_rate exceeds 30%, (2) a declared invalidation trigger fires (e.g. dependency version change), (3) entry unused for 180 days. Entries are marked degraded, never deleted — EventStore is append-only.", note:"" },
+
+  // DEVELOPMENT
+  { abbr:"CLI", full:"Command Line Interface", cat:"dev", desc:"The primary user interface for NEXUS-R through Phase 1–3. Commands: nexus run \"<task>\", nexus history, nexus cost, nexus config. Phase 4 adds a REST API and mobile companion alongside the CLI.", note:"" },
+  { abbr:"CI/CD", full:"Continuous Integration / Continuous Delivery", cat:"dev", desc:"Automated pipeline defined in .github/workflows/ci.yml. Runs pytest on every push and pull request to the main branch. The verify_module.py script gates each module (exit 0 if coverage ≥ 80%, else exit 1).", note:"" },
+  { abbr:"SDK", full:"Software Development Kit", cat:"dev", desc:"Referenced in the context of the OpenHands V1 SDK paper — a composable, extensible foundation for production agents. LiteLLM is also used as an SDK (Python package) within NEXUS-R.", note:"" },
+  { abbr:"PR", full:"Pull Request", cat:"dev", desc:"The Git collaboration mechanism triggering the CI/CD pipeline. The .github/workflows/ci.yml runs pytest on push/PR to main.", note:"" },
+  { abbr:"UI", full:"User Interface", cat:"dev", desc:"Used for: (1) CLI (Command Line Interface) — primary interface, Phase 1+. (2) Web UI (FastAPI + Chart.js dashboard) — cost dashboard, audit log, ETD manager, Phase 2+. (3) Mobile companion UI — approval and cost alerts, Phase 4.", note:"Three distinct UIs are planned across the four phases." },
+  { abbr:"ETD Distiller", full:"Execution Trace Distillation Distiller (agent role)", cat:"dev", desc:"One of seven specialized agent roles in the NEXUS-R agent team topology. A dedicated coding agent with deep knowledge of the Workflow Engine and event schemas, focused exclusively on implementing the ETD pipeline (distillation, generalization, parameterization, retrieval).", note:"Context window: 100k tokens. Distinct from the other Module Implementer roles." },
+  { abbr:"v6 / v7 / v8", full:"NEXUS-R Specification Version 6 / 7 / 8", cat:"dev", desc:"Three major revision generations. v6: original 6-module architecture, introduced CPC; rated 5/10. v7: 5-subsystem redesign, renamed CPC→ETD, added deny-first security; self-rated 9.2/10 (premature). v8: honest synthesis rated 7.5/10 design / 9/10 core idea.", note:"" },
+  { abbr:"MoMA", full:"Model and Agent Orchestration for Adaptive and Efficient Inference", cat:"dev", desc:"Research paper (arXiv:2509.07571) informing NEXUS-R's routing design. Demonstrates that routing accuracy depends critically on task classification granularity — validates NEXUS-R's multi-dimensional T1–T4 classification over binary simple/complex splits.", note:"One of four key research references in NEXUS-R." },
+  { abbr:"OpenHands", full:"Open Hands (Software Agent SDK)", cat:"dev", desc:"Research paper (arXiv:2511.03690) establishing event-sourced state management as a production-grade pattern for agent systems. Directly informs NEXUS-R's EventStore design and causal chaining via parent_event_id.", note:"Source of the 'OpenHands Condenser' 2x cost reduction via history summarization, which ETD improves upon." },
+  { abbr:"Shepherd", full:"Shepherd (Runtime Substrate for Meta-Agents)", cat:"dev", desc:"Research paper (arXiv:2605.10913) introducing per-step snapshots, trajectory compression, >5x faster forking, and >95% cache reuse. Directly informs NEXUS-R's ETD pipeline design for causal chaining and snapshot-based replay.", note:"" },
+  { abbr:"FlowMind", full:"FlowMind (Execute-Summarize Workflow Framework)", cat:"dev", desc:"Research paper (arXiv:2602.11782) demonstrating trace distillation via an Execute-Summarize framework. NEXUS-R ETD improves on FlowMind by adding explicit generalization verification with quantified bounds, addressing FlowMind's acknowledged limitation that 'some fine-grained behaviors may be lost'.", note:"" },
+];
+
+let activeCat = "all";
+
+function setcat(el) {
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  activeCat = el.dataset.cat;
+  render();
+}
+
+function render() {
+  const q = document.getElementById('q').value.toLowerCase().trim();
+  let items = data.filter(d => {
+    const catOk = activeCat === 'all' || d.cat === activeCat;
+    if (!catOk) return false;
+    if (!q) return true;
+    return d.abbr.toLowerCase().includes(q) || d.full.toLowerCase().includes(q) || d.desc.toLowerCase().includes(q);
+  });
+
+  document.getElementById('count').textContent = items.length + ' entr' + (items.length===1?'y':'ies');
+
+  const tagClass = { core:'tag-core', tech:'tag-tech', sec:'tag-sec', arch:'tag-arch', dev:'tag-dev' };
+  const tagLabel = { core:'Core system', tech:'Technology', sec:'Security', arch:'Architecture', dev:'Development' };
+
+  if (!items.length) {
+    document.getElementById('list').innerHTML = '<div class="no-results">No matches found.</div>';
+    return;
+  }
+
+  const html = items.map(d => `
+    <div class="card">
+      <div class="abbr-block">
+        <div class="abbr">${d.abbr}</div>
+        <span class="tag ${tagClass[d.cat]}">${tagLabel[d.cat]}</span>
+      </div>
+      <div>
+        <div class="full">${d.full}</div>
+        <div class="desc">${d.desc}</div>
+        ${d.note ? `<div class="note">${d.note}</div>` : ''}
+      </div>
+    </div>`).join('');
+
+  document.getElementById('list').innerHTML = html;
+}
+
+render();
+</script>

@@ -1,0 +1,7 @@
+name: cognition_router
+exports:
+  - CognitionRouter
+depends_on:
+  - nexus_r.events
+  - nexus_r.model_registry
+  - state_core
