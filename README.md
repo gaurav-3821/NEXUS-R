@@ -1,13 +1,15 @@
 # NEXUS-R
 
-> **A personal agent runtime that makes AI task execution progressively cheaper through verified workflow reuse.**
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python Version" />
+  <img src="https://img.shields.io/badge/Ollama-Validated-ED8B26?style=for-the-badge" alt="Ollama Validated" />
+  <img src="https://img.shields.io/badge/License-MIT-4CAF50?style=for-the-badge" alt="License" />
+  <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000?style=for-the-badge" alt="Code Style" />
+</p>
 
-NEXUS-R builds the execution layer for autonomous AI agents — the runtime that makes agents cheaper to operate over time, not more expensive. We are a systems-engineering project focused on:
-
-*   **Operational correctness** over demo polish
-*   **Failure recovery** over feature count
-*   **Cost transparency** over black-box magic
-*   **Local-first privacy** over cloud dependency
+<p align="center">
+  <strong>A personal agent runtime that makes AI task execution progressively cheaper through verified workflow reuse.</strong>
+</p>
 
 ---
 
@@ -121,17 +123,26 @@ See `docs/ARCHITECTURE.pdf` (or `ARCHITECTURE.md`) for the full subsystem design
 
 ---
 
-## 🚀 Performance
+## 🚀 Performance & Benchmarks
 
 Measured on a standard development workstation (Windows 11, 16GB RAM, SSD):
 
-| Metric | Result |
-| :--- | :--- |
-| Routing overhead | <50ms |
-| T1 task end-to-end (local) | ~1.9s avg, ~12s max |
-| EventStore batch append | 0.024ms/event (10K events in 233ms) |
-| 100 concurrent tasks | 100% success, zero failures |
-| Test coverage | >80% |
+| Metric | Result | Notes |
+| :--- | :--- | :--- |
+| **Routing overhead** | `< 50ms` | Pareto-optimal model selection |
+| **T1 task end-to-end (local)** | `~1.9s` avg, `~12s` max | `qwen2.5:1.5b-instruct` |
+| **EventStore batch append** | `0.024ms/event` | 10K events in 233ms |
+| **100 concurrent tasks** | `100%` success | Zero failures under load |
+| **Test coverage** | `> 80%` | Unit + Integration + Adversarial |
+
+### 📈 Concurrency & Latency Scaling Chart
+Below is the benchmark analysis chart demonstrating execution times across varying task concurrency levels, showing linear scaling under heavy local LLM loads:
+
+<p align="center">
+  <img src="docs/nexus_r_corrected_benchmark_v3.png" width="800" alt="NEXUS-R Concurrency and Latency Benchmark Analysis" />
+</p>
+
+*For the full benchmark methodology, reproduction steps, and analysis, see `docs/BENCHMARK_STYLE.pdf`.*
 
 ---
 
