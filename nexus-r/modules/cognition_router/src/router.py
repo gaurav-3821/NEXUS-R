@@ -19,6 +19,9 @@ class CognitionRouter:
         self.telemetry = telemetry
         self.models = ModelRegistry(config, secret_registry, telemetry=telemetry)
 
+    async def warm_up(self) -> None:
+        await self.models.warm_up()
+
     async def route(self, intent_result: IntentResult) -> RoutingDecision:
         etd_match = await self.event_store.similar_success_exists(intent_result.normalized_input)
         use_byok = (
@@ -29,9 +32,8 @@ class CognitionRouter:
         rationale = "Escalated to BYOK due to complexity." if use_byok else "Handled locally."
         if etd_match:
             rationale += " Similar successful history exists."
-        fallback_chain = [self.models.local.name]
-        if self.models.byok.available():
-            fallback_chain.append(self.models.byok.name)
+        full_chain = self.models.provider_chain("byok" if use_byok else "local")
+        fallback_chain = [p.name for p in full_chain]
         return RoutingDecision(
             selected_model=provider.name,
             selected_tier=intent_result.suggested_tier,

@@ -11,6 +11,16 @@ from typing import AsyncIterator, Protocol
 import httpx
 
 from .config import NEXUSConfig
+from .errors import (
+    ProviderAuthError,
+    ProviderConnectionError,
+    ProviderEmptyResponseError,
+    ProviderError,
+    ProviderMalformedResponseError,
+    ProviderModelUnavailableError,
+    ProviderRateLimitError,
+    ProviderTimeoutError,
+)
 from .telemetry import RuntimeTelemetry
 
 
@@ -133,32 +143,36 @@ class ModelRegistry:
         last_error: Exception | None = None
         for index, provider in enumerate(chain):
             attempt = index + 1
-            if attempt > 1 and self.telemetry is not None:
+            is_fallback = index > 0
+            if is_fallback and self.telemetry is not None:
                 self.telemetry.increment("provider.retries_total")
+                self.telemetry.emit(
+                    "provider_fallback_activated",
+                    provider=provider.name,
+                    provider_kind=provider.provider_kind,
+                    chain_position=attempt,
+                    total_in_chain=len(chain),
+                )
             try:
                 return await self._invoke_with_limit(
                     provider=provider,
                     prompt=prompt,
-                    fallback_used=index > 0,
+                    fallback_used=is_fallback,
                 )
             except asyncio.CancelledError:
                 if self.telemetry is not None:
                     self.telemetry.increment("provider.cancellations_total")
                 raise
-            except Exception as exc:  # pragma: no cover
+            except ProviderError as exc:
                 last_error = exc
-                if self.telemetry is not None:
-                    self.telemetry.increment("provider.failures_total", provider=provider.name)
-                    self.telemetry.emit(
-                        "provider_attempt_failed",
-                        provider=provider.name,
-                        provider_kind=provider.provider_kind,
-                        fallback_used=index > 0,
-                        error_type=type(exc).__name__,
-                        error=str(exc),
-                    )
+                self._log_provider_failure(exc, attempt, is_fallback)
                 continue
-        raise RuntimeError(str(last_error) if last_error else "Provider invocation failed.")
+            except Exception as exc:
+                last_error = exc
+                mapped = self._classify_unexpected_error(exc, provider)
+                self._log_provider_failure(mapped, attempt, is_fallback)
+                continue
+        raise self._build_chain_exhausted_error(last_error, preferred)
 
     async def stream(self, prompt: str, preferred: str) -> AsyncIterator[ModelStreamChunk]:
         chain = self.provider_chain(preferred)
@@ -167,13 +181,21 @@ class ModelRegistry:
         last_error: Exception | None = None
         for index, provider in enumerate(chain):
             attempt = index + 1
-            if attempt > 1 and self.telemetry is not None:
+            is_fallback = index > 0
+            if is_fallback and self.telemetry is not None:
                 self.telemetry.increment("provider.retries_total")
+                self.telemetry.emit(
+                    "provider_fallback_activated",
+                    provider=provider.name,
+                    provider_kind=provider.provider_kind,
+                    chain_position=attempt,
+                    total_in_chain=len(chain),
+                )
             try:
                 async for chunk in self._stream_with_limit(
                     provider=provider,
                     prompt=prompt,
-                    fallback_used=index > 0,
+                    fallback_used=is_fallback,
                 ):
                     yield chunk
                 return
@@ -181,20 +203,149 @@ class ModelRegistry:
                 if self.telemetry is not None:
                     self.telemetry.increment("provider.cancellations_total")
                 raise
-            except Exception as exc:  # pragma: no cover
+            except ProviderError as exc:
                 last_error = exc
-                if self.telemetry is not None:
-                    self.telemetry.increment("provider.failures_total", provider=provider.name)
-                    self.telemetry.emit(
-                        "provider_stream_failed",
-                        provider=provider.name,
-                        provider_kind=provider.provider_kind,
-                        fallback_used=index > 0,
-                        error_type=type(exc).__name__,
-                        error=str(exc),
-                    )
+                self._log_provider_failure(exc, attempt, is_fallback)
                 continue
-        raise RuntimeError(str(last_error) if last_error else "Provider stream failed.")
+            except Exception as exc:
+                last_error = exc
+                mapped = self._classify_unexpected_error(exc, provider)
+                self._log_provider_failure(mapped, attempt, is_fallback)
+                continue
+        raise self._build_chain_exhausted_error(last_error, preferred)
+
+    def _classify_provider_error(
+        self,
+        exc: Exception,
+        provider: StaticModelProvider,
+        *,
+        stream_context: bool = False,
+    ) -> ProviderError:
+        tier = provider.provider_kind
+        provider_name = provider.name
+        if isinstance(exc, asyncio.TimeoutError):
+            msg = (
+                f"{'Ollama' if tier == 'local' else 'Groq'} timeout after "
+                f"{self.config.models.provider_timeout_seconds}s: "
+                f"{'verify Ollama server is running on localhost:11434' if tier == 'local' else 'provider overloaded or network unreachable'}"
+            )
+            return ProviderTimeoutError(
+                msg, provider=provider_name, tier=tier,
+                failure_class="timeout", retryable=True,
+                fallback_decision="attempt_next_in_chain",
+            )
+        if isinstance(exc, httpx.ConnectError):
+            host = self.config.models.local_api_base if tier == "local" else "api.groq.com"
+            msg = (
+                f"{'Ollama' if tier == 'local' else 'Groq'} connection refused: "
+                f"verify {'Ollama server is running on ' + host if tier == 'local' else 'network connectivity to ' + host}"
+            )
+            return ProviderConnectionError(
+                msg, provider=provider_name, tier=tier,
+                failure_class="connection_refused", retryable=True,
+                fallback_decision="attempt_next_in_chain",
+            )
+        if isinstance(exc, httpx.TimeoutException):
+            msg = (
+                f"{'Ollama' if tier == 'local' else 'Groq'} HTTP timeout after "
+                f"{self.config.models.provider_timeout_seconds}s"
+            )
+            return ProviderTimeoutError(
+                msg, provider=provider_name, tier=tier,
+                failure_class="http_timeout", retryable=True,
+                fallback_decision="attempt_next_in_chain",
+            )
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+            if status == 401 or status == 403:
+                key_source = "NEXUS_BYOK_API_KEY" if tier == "byok" else "default"
+                msg = (
+                    f"{'Groq' if tier == 'byok' else 'Provider'} authentication failed "
+                    f"(HTTP {status}): verify API key in {key_source} is valid and not expired"
+                )
+                return ProviderAuthError(
+                    msg, provider=provider_name, tier=tier,
+                    failure_class="authentication", retryable=False,
+                    fallback_decision="skip_chain_if_exhausted",
+                )
+            if status == 429:
+                msg = (
+                    f"{'Groq' if tier == 'byok' else 'Provider'} rate-limited "
+                    f"(HTTP 429): retry after cooldown or fallback to lower-cost tier"
+                )
+                return ProviderRateLimitError(
+                    msg, provider=provider_name, tier=tier,
+                    failure_class="rate_limit", retryable=True,
+                    fallback_decision="attempt_next_in_chain",
+                )
+            if status == 404:
+                msg = (
+                    f"Model '{provider_name}' not found: verify model name is correct "
+                    f"{'and run `ollama pull ' + self._provider_model_name(provider_name) + '`' if tier == 'local' else 'for the provider'}"
+                )
+                return ProviderModelUnavailableError(
+                    msg, provider=provider_name, tier=tier,
+                    failure_class="model_not_found", retryable=False,
+                    fallback_decision="skip_chain_if_exhausted",
+                )
+            msg = f"{'Ollama' if tier == 'local' else 'Groq'} HTTP error {status}"
+            return ProviderError(
+                msg, provider=provider_name, tier=tier,
+                failure_class=f"http_{status}", retryable=status >= 500,
+                fallback_decision="attempt_next_in_chain" if status >= 500 else "skip_chain_if_exhausted",
+            )
+        if isinstance(exc, (json.JSONDecodeError, RuntimeError)):
+            exc_str = str(exc)
+            msg = (
+                f"{'Ollama' if tier == 'local' else 'Groq'} returned malformed response: "
+                f"{exc_str[:120]}"
+            )
+            return ProviderMalformedResponseError(
+                msg, provider=provider_name, tier=tier,
+                failure_class="malformed_response", retryable=False,
+                fallback_decision="skip_chain_if_exhausted",
+            )
+        return ProviderError(
+            str(exc)[:200], provider=provider_name, tier=tier,
+            failure_class=type(exc).__name__, retryable=True,
+            fallback_decision="attempt_next_in_chain",
+        )
+
+    def _classify_unexpected_error(self, exc: Exception, provider: StaticModelProvider) -> ProviderError:
+        return ProviderError(
+            str(exc)[:200], provider=provider.name, tier=provider.provider_kind,
+            failure_class=f"unexpected:{type(exc).__name__}", retryable=True,
+            fallback_decision="attempt_next_in_chain",
+        )
+
+    def _log_provider_failure(self, exc: ProviderError, attempt: int, was_fallback: bool) -> None:
+        if self.telemetry is None:
+            return
+        self.telemetry.increment("provider.failures_total", provider=exc.provider, failure_class=exc.failure_class)
+        self.telemetry.increment("provider.attempts_total")
+        self.telemetry.emit(
+            "provider_attempt_failed",
+            provider=exc.provider,
+            tier=exc.tier,
+            failure_class=exc.failure_class,
+            retryable=exc.retryable,
+            fallback_decision=exc.fallback_decision,
+            fallback_was_already=was_fallback,
+            chain_position=attempt,
+            error_message=str(exc),
+        )
+
+    def _build_chain_exhausted_error(self, last_error: Exception | None, preferred: str) -> RuntimeError:
+        if isinstance(last_error, ProviderError):
+            details = last_error.to_dict()
+            msg = (
+                f"All providers in chain exhausted for preferred='{preferred}'. "
+                f"Last provider={details['provider']}, failure_class={details['failure_class']}, "
+                f"retryable={details['retryable']}, fallback_decision={details['fallback_decision']}. "
+                f"Error: {last_error}"
+            )
+            return RuntimeError(msg)
+        return RuntimeError(str(last_error) if last_error else f"All providers exhausted for preferred='{preferred}'.")
 
     async def _invoke_with_limit(
         self,
@@ -297,7 +448,13 @@ class ModelRegistry:
             )
         api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
         if not api_key:
-            raise RuntimeError("BYOK secret is unavailable.")
+            raise ProviderAuthError(
+                f"Groq API key not found: set NEXUS_BYOK_API_KEY environment variable "
+                f"or configure keyring secret '{self.config.models.byok_secret_name}'",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="missing_credentials", retryable=False,
+                fallback_decision="skip_chain_if_exhausted",
+            )
         return await self._litellm_completion(
             provider=provider,
             prompt=prompt,
@@ -373,24 +530,88 @@ class ModelRegistry:
         api_base: str | None = None,
     ) -> ModelInvocationResult:
         from litellm import acompletion
+        from litellm.exceptions import (
+            AuthenticationError,
+            RateLimitError,
+            ServiceUnavailableError,
+            Timeout as LiteLLMTimeout,
+        )
 
         started = perf_counter()
-        response = await acompletion(
-            model=provider.name,
-            messages=[{"role": "user", "content": prompt}],
-            api_key=api_key,
-            api_base=api_base,
-            timeout=self.config.models.provider_timeout_seconds,
-            temperature=0,
-        )
+        try:
+            response = await acompletion(
+                model=provider.name,
+                messages=[{"role": "user", "content": prompt}],
+                api_key=api_key,
+                api_base=api_base,
+                timeout=self.config.models.provider_timeout_seconds,
+                temperature=0,
+            )
+        except asyncio.TimeoutError:
+            raise self._classify_provider_error(asyncio.TimeoutError(), provider)
+        except httpx.TimeoutException as exc:
+            raise self._classify_provider_error(exc, provider)
+        except LiteLLMTimeout as exc:
+            base = asyncio.TimeoutError()
+            raise self._classify_provider_error(base, provider) from exc
+        except httpx.ConnectError as exc:
+            raise self._classify_provider_error(exc, provider)
+        except httpx.HTTPStatusError as exc:
+            raise self._classify_provider_error(exc, provider)
+        except AuthenticationError as exc:
+            raise ProviderAuthError(
+                f"{'Groq' if provider.provider_kind == 'byok' else 'Provider'} authentication failed: "
+                f"verify API key is valid. {exc}",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="authentication", retryable=False,
+                fallback_decision="skip_chain_if_exhausted",
+            )
+        except RateLimitError as exc:
+            raise ProviderRateLimitError(
+                f"{'Groq' if provider.provider_kind == 'byok' else 'Provider'} rate-limited: "
+                f"retry after cooldown or fallback. {exc}",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="rate_limit", retryable=True,
+                fallback_decision="attempt_next_in_chain",
+            )
+        except ServiceUnavailableError as exc:
+            raise ProviderConnectionError(
+                f"{'Groq' if provider.provider_kind == 'byok' else 'Provider'} service unavailable: "
+                f"provider may be overloaded. {exc}",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="service_unavailable", retryable=True,
+                fallback_decision="attempt_next_in_chain",
+            )
+        except httpx.HTTPError as exc:
+            raise self._classify_provider_error(exc, provider)
+        except json.JSONDecodeError as exc:
+            raise ProviderMalformedResponseError(
+                f"{'Groq' if provider.provider_kind == 'byok' else 'Provider'} returned invalid JSON: {exc}",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="malformed_json", retryable=False,
+                fallback_decision="skip_chain_if_exhausted",
+            )
+        except Exception as exc:
+            raise self._classify_provider_error(exc, provider)
+
         latency_ms = (perf_counter() - started) * 1000
         choices = getattr(response, "choices", None)
         if not choices:
-            raise RuntimeError("Provider returned no choices.")
+            raise ProviderMalformedResponseError(
+                f"{'Groq' if provider.provider_kind == 'byok' else 'Provider'} returned no choices in response.",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="no_choices", retryable=False,
+                fallback_decision="skip_chain_if_exhausted",
+            )
         message = getattr(choices[0], "message", None)
         content = self._coerce_message_content(getattr(message, "content", ""))
         if not content.strip():
-            raise RuntimeError("Provider returned empty content.")
+            raise ProviderEmptyResponseError(
+                f"{'Groq' if provider.provider_kind == 'byok' else 'Provider'} returned empty content.",
+                provider=provider.name, tier=provider.provider_kind,
+                failure_class="empty_content", retryable=True,
+                fallback_decision="attempt_next_in_chain",
+            )
         estimated_cost = self._estimate_cost(provider, response)
         return ModelInvocationResult(
             text=content,
@@ -454,6 +675,26 @@ class ModelRegistry:
         if total_tokens <= 0:
             return provider.estimated_cost
         return max(provider.estimated_cost, total_tokens * (provider.estimated_cost / 1000.0))
+
+    async def warm_up(self) -> None:
+        if not self.local.available():
+            return
+        if self.telemetry is not None:
+            self.telemetry.emit("model_warm_up_started", provider=self.local.name)
+        try:
+            await self._litellm_completion(
+                provider=self.local,
+                prompt="warm-up",
+                fallback_used=False,
+                api_base=self.config.models.local_api_base,
+                api_key="ollama",
+            )
+            if self.telemetry is not None:
+                self.telemetry.increment("model.warm_ups_total")
+                self.telemetry.emit("model_warm_up_completed")
+        except Exception:
+            if self.telemetry is not None:
+                self.telemetry.increment("model.warm_up_failures_total")
 
     def _local_model_ready(self, model_name: str) -> bool:
         target = self._provider_model_name(model_name)

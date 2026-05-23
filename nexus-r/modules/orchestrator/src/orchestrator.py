@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from nexus_r.config import NEXUSConfig
 from nexus_r.events import Action, Event, ExecutionResult, TaskDefinition
 from nexus_r.telemetry import RuntimeTelemetry
@@ -24,7 +26,11 @@ class MainOrchestrator:
             config.observability.log_path,
             enabled=config.observability.enabled,
         )
-        self.event_store = EventStore(config.database.path, telemetry=self.telemetry)
+        self.event_store = EventStore(
+            config.database.path,
+            telemetry=self.telemetry,
+            cache_size_mb=config.database.sqlite_cache_size_mb,
+        )
         self.working_state = WorkingStateStore()
         self.identity_store = IdentityStore(config.database.path.parent)
         self.session_manager = SessionManager(config.workspace_root)
@@ -50,6 +56,7 @@ class MainOrchestrator:
     async def initialize(self) -> None:
         async with self.telemetry.span("orchestrator.initialize"):
             await self.event_store.initialize()
+            asyncio.create_task(self.router.warm_up(), name="model-warm-up")
             self.session_manager.initialize()
             if self.session_id is None:
                 self.session_id = self.session_manager.get_or_create_default_session()
@@ -62,6 +69,16 @@ class MainOrchestrator:
         await self.event_store.close()
         self.session_manager.close()
         self.telemetry.emit("orchestrator_closed")
+
+    def _emit_task_failure_telemetry(self, task_id: str, error_type: str, message: str, provider_info: dict[str, object] | None = None) -> None:
+        self.telemetry.increment("orchestrator.failures_total", error_type=error_type)
+        self.telemetry.emit(
+            "orchestrator_task_failed",
+            task_id=task_id,
+            error_type=error_type,
+            error_message=message,
+            provider_info=provider_info,
+        )
 
     async def run_task(self, raw_input: str) -> dict[str, object]:
         self._active_tasks += 1
@@ -77,6 +94,7 @@ class MainOrchestrator:
         permission = None
         routing = None
         trace_event_id: str | None = None
+        provider_info: dict[str, object] | None = None
         try:
             async with self.telemetry.span("orchestrator.run_task", task_id=task.task_id):
                 await self.initialize()
@@ -217,23 +235,25 @@ class MainOrchestrator:
                     await self.cost_tracker.record(task.task_id, trace_cost, trace_model, task.tier)
                 return await self._finish(task, intent, routing, result, permission, trace_event_id)
         except Exception as exc:
-            self.telemetry.increment("orchestrator.failures_total")
-            self.telemetry.emit(
-                "orchestrator_task_failed",
-                task_id=task.task_id,
-                error_type=type(exc).__name__,
-                error=str(exc),
+            self._emit_task_failure_telemetry(
+                task.task_id,
+                type(exc).__name__,
+                str(exc),
+                provider_info,
             )
+            provider_event_data: dict[str, object] = {
+                "task_id": task.task_id,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            }
+            if provider_info:
+                provider_event_data["provider_info"] = provider_info
             try:
                 error_event_id = await self.event_store.append(
                     Event(
                         event_type="task_error",
                         parent_event_id=trace_event_id,
-                        data={
-                            "task_id": task.task_id,
-                            "error_type": type(exc).__name__,
-                            "message": str(exc),
-                        },
+                        data=provider_event_data,
                     )
                 )
             except Exception:
