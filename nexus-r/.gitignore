@@ -27,6 +27,7 @@ build/
 .failure-workspace/
 .validation-workspace/
 .fresh-ux-demo/.pytest-tmp/
+.phase-c/
 .phase-c-test/
 .phase-c/telemetry-audit/*.log
 .chaos/
