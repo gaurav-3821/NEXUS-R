@@ -44,8 +44,32 @@ The system is now benchmarked against a real local model, which makes these numb
 
 The EventStore redesign succeeded for batched persistence, not for strict synchronous single-append latency. That matters because the current orchestrator still emits many single events in the hot path.
 
+## ETD Cost Reduction Validation
+
+The Experience Trace Database (ETD) 7-stage pipeline was validated end-to-end. The same task (`list all python files`) was executed 5 times through `MainOrchestrator`. First execution creates an ETD entry; subsequent executions retrieve and apply it.
+
+| Execution | Route    | Source | Cost    | Latency  | Success |
+|-----------|----------|--------|---------|----------|---------|
+| 1         | model    | model  | $0.0750 | 7234 ms  | True    |
+| 2         | etd      | cached | $0.0000 | 3734 ms  | True    |
+| 3         | etd      | cached | $0.0000 | 3766 ms  | True    |
+| 4         | etd      | cached | $0.0000 | 3828 ms  | True    |
+| 5         | etd      | cached | $0.0000 | 3578 ms  | True    |
+
+- **Cost reduction**: 100% (cached runs incur $0.000)
+- **Latency reduction**: 48.5% (7234 ms → 3726 ms average)
+- **ETD hit rate**: 80% (4 of 5 from cache)
+- **Pipeline stages validated**: Distiller, Generalizer, Parameterizer, Indexer, Retriever, Invalidator, Applicator
+- **113 unit + integration tests pass** across all 7 modules
+
+Three bugs were discovered and fixed during validation:
+1. **Embedding mismatch** — query embedded from `normalized_input`, stored entry from `intent_signature` (different strings → different hash vectors)
+2. **Type-match delimiter mismatch** — underscore vs hyphen in action type comparison
+3. **Applicator action mapping** — `execution_sandbox` mapped to `run_terminal` instead of forwarding the action as the action type
+
 ## Performance Conclusions
 
 1. Real local inference works, but the first-call model load and CPU-bound generation dominate latency.
 2. Batch persistence is good enough for Phase 1.5; synchronous append performance still misses the original hard target.
-3. Phase 2 should not assume that current concurrency numbers leave much headroom for additional orchestration or web overhead.
+3. ETD caching provides 48.5% latency reduction for sandbox tasks. Model-invocation tasks would benefit more (100% vs ~48%) but are gated by applicator's sandbox-only tool support.
+4. Phase 2 should not assume that current concurrency numbers leave much headroom for additional orchestration or web overhead.

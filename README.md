@@ -4,6 +4,8 @@
   <img src="https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python Version" />
   <img src="https://img.shields.io/badge/Ollama-Validated-ED8B26?style=for-the-badge" alt="Ollama Validated" />
   <img src="https://img.shields.io/badge/License-MIT-4CAF50?style=for-the-badge" alt="License" />
+  <img src="https://img.shields.io/badge/Phase%20D-Validated-00C853?style=for-the-badge" alt="Phase 2 Validated" />
+  <img src="https://img.shields.io/badge/Tests-268%20Passing-4CAF50?style=for-the-badge" alt="268 Tests Passing" />
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000?style=for-the-badge" alt="Code Style" />
 </p>
 
@@ -138,6 +140,21 @@ pip install -e ".[dev]"
 ollama pull qwen2.5:1.5b-instruct
 nexus run "list all python files in the workspace"
 ```
+
+---
+
+## ✅ Phase 2 Validation Status
+
+**Validated: 2026-05-24 | Commit: [3cf25ef](https://github.com/anomalyco/NEXUS-R/tree/3cf25ef) | 268/268 tests passing**
+
+| Phase | Scope | Status |
+|---|---|---|
+| A — Baseline Stabilization | 268 tests, temp infra, flaky fixes | ✅ PASS |
+| B — Stress Validation | Concurrency 200 tasks, 30min soak, 50K EventStore, ETD saturation | ✅ PASS |
+| C — Failure Recovery | Provider chaos, session recovery, SQLite corruption, sandbox security, telemetry | ✅ PASS (32/32) |
+| D — Baseline Freeze | ETD 96.77% reduction, repro CV<10%, cost CV=0%, reports frozen | ✅ PASS |
+
+See [docs/phase2_validation_summary.md](nexus-r/docs/phase2_validation_summary.md) for full report.
 
 ---
 

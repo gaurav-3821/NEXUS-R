@@ -81,6 +81,11 @@ class RoutingDecision(BaseModel):
     rationale: str
     etd_match_found: bool
     fallback_chain: list[str] = Field(default_factory=list)
+    car_tier: int = 0
+    car_tier_name: str = "local_7b"
+    parallel_probe_used: bool = False
+    de_escalated: bool = False
+    requires_approval: bool = False
 
 
 class ExecutionResult(BaseModel):

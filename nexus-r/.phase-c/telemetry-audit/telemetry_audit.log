@@ -1,0 +1,384 @@
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607221.06906}
+{"db_path": "C:\\Users\\Gaurav\\Documents\\NEXUS-R\\nexus-r\\.phase-c\\telemetry-audit\\.nexus-r\\events.sqlite3", "event": "event_store_initialize", "timestamp_unix": 1779607221.077245}
+{"duration_ms": 123.73, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607221.192732}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "53b2388e-fd22-476e-a76d-8dacc6f530c1", "timestamp_unix": 1779607221.194618}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607221.196124}
+{"duration_ms": 1.707, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607221.197131}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607221.219683}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607221.222796}
+{"batch_size": 1, "duration_ms": 1.761, "event": "event_store_write", "timestamp_unix": 1779607221.228412}
+{"batch_size": 1, "duration_ms": 1.183, "event": "event_store_write", "timestamp_unix": 1779607221.23041}
+{"batch_size": 1, "duration_ms": 1.597, "event": "event_store_write", "timestamp_unix": 1779607221.233299}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607222.688202, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607222.691326}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607222.692315, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607222.693909, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607224.189222, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607224.192231}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607224.194291, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607224.196341, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1503.701, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607224.197344, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 185.349, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607224.381215, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.475, "event": "event_store_write", "timestamp_unix": 1779607224.407986}
+{"batch_size": 1, "duration_ms": 1.203, "event": "event_store_write", "timestamp_unix": 1779607224.410885}
+{"action": "read_file", "event": "sandbox_execution_started", "task_id": "53b2388e-fd22-476e-a76d-8dacc6f530c1", "timestamp_unix": 1779607224.412881}
+{"action": "read_file", "event": "sandbox_execution_completed", "success": false, "task_id": "53b2388e-fd22-476e-a76d-8dacc6f530c1", "timestamp_unix": 1779607224.416985}
+{"batch_size": 1, "duration_ms": 1.34, "event": "event_store_write", "timestamp_unix": 1779607224.420632}
+{"batch_size": 1, "duration_ms": 1.155, "event": "event_store_write", "timestamp_unix": 1779607224.423631}
+{"batch_size": 1, "duration_ms": 1.272, "event": "event_store_write", "timestamp_unix": 1779607224.425635}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:1.5b-instruct", "success": false, "task_id": "53b2388e-fd22-476e-a76d-8dacc6f530c1", "timestamp_unix": 1779607224.444939}
+{"duration_ms": 3252.322, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "53b2388e-fd22-476e-a76d-8dacc6f530c1", "timestamp_unix": 1779607224.446932}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "c56743d6-0ead-42f0-b495-21b4d67ec2f0", "timestamp_unix": 1779607224.448942}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607224.44994}
+{"duration_ms": 1.299, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607224.450938}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607224.468821}
+{"batch_size": 1, "duration_ms": 1.73, "event": "event_store_write", "timestamp_unix": 1779607224.473897}
+{"batch_size": 1, "duration_ms": 1.26, "event": "event_store_write", "timestamp_unix": 1779607224.476548}
+{"batch_size": 1, "duration_ms": 1.293, "event": "event_store_write", "timestamp_unix": 1779607224.479694}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607225.91384, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607225.918942}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607225.920936, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607225.922522, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607227.394465, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607227.39947}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607227.40047, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607227.40147, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1480.98, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607227.403487, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 179.59, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607227.581395, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.391, "event": "event_store_write", "timestamp_unix": 1779607227.610987}
+{"batch_size": 1, "duration_ms": 1.428, "event": "event_store_write", "timestamp_unix": 1779607227.613978}
+{"action": "run_terminal", "event": "sandbox_execution_started", "task_id": "c56743d6-0ead-42f0-b495-21b4d67ec2f0", "timestamp_unix": 1779607227.615978}
+{"action": "run_terminal", "error": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "sandbox_execution_failed", "task_id": "c56743d6-0ead-42f0-b495-21b4d67ec2f0", "timestamp_unix": 1779607227.616981}
+{"batch_size": 1, "duration_ms": 1.405, "event": "event_store_write", "timestamp_unix": 1779607227.620082}
+{"duration_ms": 3172.749, "error": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "span_end", "span": "orchestrator.run_task", "status": "error", "task_id": "c56743d6-0ead-42f0-b495-21b4d67ec2f0", "timestamp_unix": 1779607227.621996}
+{"error_message": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "orchestrator_task_failed", "provider_info": null, "task_id": "c56743d6-0ead-42f0-b495-21b4d67ec2f0", "timestamp_unix": 1779607227.623073}
+{"batch_size": 1, "duration_ms": 1.387, "event": "event_store_write", "timestamp_unix": 1779607227.6251}
+{"batch_size": 1, "duration_ms": 1.257, "event": "event_store_write", "timestamp_unix": 1779607227.628114}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/llama3:70b", "success": false, "task_id": "c56743d6-0ead-42f0-b495-21b4d67ec2f0", "timestamp_unix": 1779607227.646856}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "9e744b05-6ec0-43e0-a354-744946416122", "timestamp_unix": 1779607227.648978}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607227.649857}
+{"duration_ms": 1.321, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607227.651972}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607227.669865}
+{"batch_size": 1, "duration_ms": 1.674, "event": "event_store_write", "timestamp_unix": 1779607227.674973}
+{"batch_size": 1, "duration_ms": 1.349, "event": "event_store_write", "timestamp_unix": 1779607227.678404}
+{"batch_size": 1, "duration_ms": 1.252, "event": "event_store_write", "timestamp_unix": 1779607227.681504}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": null, "success": false, "task_id": "9e744b05-6ec0-43e0-a354-744946416122", "timestamp_unix": 1779607227.700159}
+{"duration_ms": 52.952, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "9e744b05-6ec0-43e0-a354-744946416122", "timestamp_unix": 1779607227.702167}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "3f4612a2-4689-4252-a865-640c1f401ac7", "timestamp_unix": 1779607227.703167}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607227.705274}
+{"duration_ms": 1.209, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607227.706268}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607227.724319}
+{"batch_size": 1, "duration_ms": 1.922, "event": "event_store_write", "timestamp_unix": 1779607227.729519}
+{"batch_size": 1, "duration_ms": 1.524, "event": "event_store_write", "timestamp_unix": 1779607227.732471}
+{"batch_size": 1, "duration_ms": 1.293, "event": "event_store_write", "timestamp_unix": 1779607227.735417}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607229.225082, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607229.229285}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607229.230289, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607229.231289, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607230.692429, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607230.696063}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607230.696063, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607230.698039, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1467.803, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607230.699046, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 179.458, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607230.877315, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.379, "event": "event_store_write", "timestamp_unix": 1779607230.904361}
+{"batch_size": 1, "duration_ms": 1.258, "event": "event_store_write", "timestamp_unix": 1779607230.907358}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607231.752829, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607231.754351}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607231.755347, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607231.756363, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 181.365, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607231.937361, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.479, "event": "event_store_write", "timestamp_unix": 1779607231.940841}
+{"batch_size": 1, "duration_ms": 1.127, "event": "event_store_write", "timestamp_unix": 1779607231.942929}
+{"batch_size": 1, "duration_ms": 1.855, "event": "event_store_write", "timestamp_unix": 1779607231.945929}
+{"duration_ms": 1.598, "event": "event_store_query", "filters": {"event_type": "workflow_step"}, "row_count": 2, "timestamp_unix": 1779607231.949459}
+{"event": "etd_learned", "sig": "general-llm", "task_id": "3f4612a2-4689-4252-a865-640c1f401ac7", "timestamp_unix": 1779607231.950459}
+{"batch_size": 1, "duration_ms": 1.279, "event": "event_store_write", "timestamp_unix": 1779607231.953463}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:1.5b-instruct", "success": true, "task_id": "3f4612a2-4689-4252-a865-640c1f401ac7", "timestamp_unix": 1779607231.975059}
+{"duration_ms": 4272.054, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "3f4612a2-4689-4252-a865-640c1f401ac7", "timestamp_unix": 1779607231.975939}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "e505dfd2-4e38-4980-9ede-843c3fb3a207", "timestamp_unix": 1779607231.97746}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607231.978484}
+{"duration_ms": 0.672, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607231.979476}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607231.993852}
+{"batch_size": 1, "duration_ms": 1.17, "event": "event_store_write", "timestamp_unix": 1779607231.997137}
+{"batch_size": 1, "duration_ms": 0.905, "event": "event_store_write", "timestamp_unix": 1779607231.99914}
+{"batch_size": 1, "duration_ms": 1.171, "event": "event_store_write", "timestamp_unix": 1779607232.001136}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607232.860297, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607232.861818}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607232.861818, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607232.862816, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607233.837097, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607233.841259}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607233.843261, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607233.844264, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 983.344, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607233.846257, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 181.999, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607234.026451, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.478, "event": "event_store_write", "timestamp_unix": 1779607234.056372}
+{"batch_size": 1, "duration_ms": 1.706, "event": "event_store_write", "timestamp_unix": 1779607234.060366}
+{"action": "list_files", "event": "sandbox_execution_started", "task_id": "e505dfd2-4e38-4980-9ede-843c3fb3a207", "timestamp_unix": 1779607234.061371}
+{"action": "list_files", "event": "sandbox_execution_completed", "success": true, "task_id": "e505dfd2-4e38-4980-9ede-843c3fb3a207", "timestamp_unix": 1779607234.073498}
+{"batch_size": 1, "duration_ms": 0.952, "event": "event_store_write", "timestamp_unix": 1779607234.076387}
+{"batch_size": 1, "duration_ms": 1.297, "event": "event_store_write", "timestamp_unix": 1779607234.079772}
+{"batch_size": 1, "duration_ms": 1.36, "event": "event_store_write", "timestamp_unix": 1779607234.08287}
+{"duration_ms": 1.331, "event": "event_store_query", "filters": {"event_type": "workflow_step"}, "row_count": 3, "timestamp_unix": 1779607234.085877}
+{"event": "etd_learned", "sig": "list-files", "task_id": "e505dfd2-4e38-4980-9ede-843c3fb3a207", "timestamp_unix": 1779607234.088882}
+{"batch_size": 1, "duration_ms": 1.271, "event": "event_store_write", "timestamp_unix": 1779607234.091878}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:7b", "success": true, "task_id": "e505dfd2-4e38-4980-9ede-843c3fb3a207", "timestamp_unix": 1779607234.112484}
+{"duration_ms": 2136.375, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "e505dfd2-4e38-4980-9ede-843c3fb3a207", "timestamp_unix": 1779607234.113584}
+{"duration_ms": 2.358, "event": "event_store_query", "filters": {"event_type": "audit_log"}, "row_count": 4, "timestamp_unix": 1779607234.121691}
+{"duration_ms": 1.014, "event": "event_store_query", "filters": {"event_type": "sandbox_invocation"}, "row_count": 3, "timestamp_unix": 1779607234.124485}
+{"duration_ms": 1.472, "event": "event_store_query", "filters": {"event_type": "task_completed"}, "row_count": 5, "timestamp_unix": 1779607234.127027}
+{"duration_ms": 1.232, "event": "event_store_query", "filters": {"event_type": "task_error"}, "row_count": 1, "timestamp_unix": 1779607234.130117}
+{"db_path": "C:\\Users\\Gaurav\\Documents\\NEXUS-R\\nexus-r\\.phase-c\\telemetry-audit\\.nexus-r\\events.sqlite3", "event": "event_store_closed", "timestamp_unix": 1779607234.148372}
+{"event": "orchestrator_closed", "timestamp_unix": 1779607234.162373}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607404.896568}
+{"db_path": "C:\\Users\\Gaurav\\Documents\\NEXUS-R\\nexus-r\\.phase-c\\telemetry-audit\\.nexus-r\\events.sqlite3", "event": "event_store_initialize", "timestamp_unix": 1779607404.898094}
+{"duration_ms": 38.374, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607404.934375}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "3f21e582-e493-4545-9df2-9a3c1588e71a", "timestamp_unix": 1779607404.935374}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607404.936372}
+{"duration_ms": 0.737, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607404.937385}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607404.963888}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607404.965906}
+{"batch_size": 1, "duration_ms": 8.317, "event": "event_store_write", "timestamp_unix": 1779607404.976924}
+{"batch_size": 1, "duration_ms": 1.03, "event": "event_store_write", "timestamp_unix": 1779607404.978939}
+{"batch_size": 1, "duration_ms": 1.33, "event": "event_store_write", "timestamp_unix": 1779607404.981994}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607406.071182, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607406.073591}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607406.073591, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607406.074601, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607407.171714, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607407.17425}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607407.175248, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607407.176759, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1102.757, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607407.177771, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 178.165, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607407.354782, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.33, "event": "event_store_write", "timestamp_unix": 1779607407.377268}
+{"batch_size": 1, "duration_ms": 1.129, "event": "event_store_write", "timestamp_unix": 1779607407.37928}
+{"action": "read_file", "event": "sandbox_execution_started", "task_id": "3f21e582-e493-4545-9df2-9a3c1588e71a", "timestamp_unix": 1779607407.380804}
+{"action": "read_file", "event": "sandbox_execution_completed", "success": false, "task_id": "3f21e582-e493-4545-9df2-9a3c1588e71a", "timestamp_unix": 1779607407.384527}
+{"batch_size": 1, "duration_ms": 1.422, "event": "event_store_write", "timestamp_unix": 1779607407.386524}
+{"batch_size": 1, "duration_ms": 0.871, "event": "event_store_write", "timestamp_unix": 1779607407.389528}
+{"batch_size": 1, "duration_ms": 0.898, "event": "event_store_write", "timestamp_unix": 1779607407.39154}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:1.5b-instruct", "success": false, "task_id": "3f21e582-e493-4545-9df2-9a3c1588e71a", "timestamp_unix": 1779607407.406702}
+{"duration_ms": 2472.092, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "3f21e582-e493-4545-9df2-9a3c1588e71a", "timestamp_unix": 1779607407.407701}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "884945ab-9b0d-459e-b8fd-0689179a8141", "timestamp_unix": 1779607407.408701}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607407.409687}
+{"duration_ms": 0.901, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607407.411193}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607407.425096}
+{"batch_size": 1, "duration_ms": 1.11, "event": "event_store_write", "timestamp_unix": 1779607407.428645}
+{"batch_size": 1, "duration_ms": 1.001, "event": "event_store_write", "timestamp_unix": 1779607407.431675}
+{"batch_size": 1, "duration_ms": 0.977, "event": "event_store_write", "timestamp_unix": 1779607407.433205}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607408.455832, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607408.459351}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607408.460348, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607408.46155, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607409.505324, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607409.507784}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607409.50878, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607409.509785, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1049.819, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607409.511293, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 186.627, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607409.69689, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.115, "event": "event_store_write", "timestamp_unix": 1779607409.717974}
+{"batch_size": 1, "duration_ms": 1.376, "event": "event_store_write", "timestamp_unix": 1779607409.721517}
+{"action": "run_terminal", "event": "sandbox_execution_started", "task_id": "884945ab-9b0d-459e-b8fd-0689179a8141", "timestamp_unix": 1779607409.72206}
+{"action": "run_terminal", "error": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "sandbox_execution_failed", "task_id": "884945ab-9b0d-459e-b8fd-0689179a8141", "timestamp_unix": 1779607409.723532}
+{"batch_size": 1, "duration_ms": 1.022, "event": "event_store_write", "timestamp_unix": 1779607409.725071}
+{"duration_ms": 2317.243, "error": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "span_end", "span": "orchestrator.run_task", "status": "error", "task_id": "884945ab-9b0d-459e-b8fd-0689179a8141", "timestamp_unix": 1779607409.726629}
+{"error_message": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "orchestrator_task_failed", "provider_info": null, "task_id": "884945ab-9b0d-459e-b8fd-0689179a8141", "timestamp_unix": 1779607409.727635}
+{"batch_size": 1, "duration_ms": 0.93, "event": "event_store_write", "timestamp_unix": 1779607409.729627}
+{"batch_size": 1, "duration_ms": 1.18, "event": "event_store_write", "timestamp_unix": 1779607409.732161}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/llama3:70b", "success": false, "task_id": "884945ab-9b0d-459e-b8fd-0689179a8141", "timestamp_unix": 1779607409.74719}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "0a025671-c578-4f31-bfe8-93e0d785f69b", "timestamp_unix": 1779607409.749194}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607409.750688}
+{"duration_ms": 0.898, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607409.750688}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607409.765314}
+{"batch_size": 1, "duration_ms": 0.964, "event": "event_store_write", "timestamp_unix": 1779607409.768831}
+{"batch_size": 1, "duration_ms": 0.941, "event": "event_store_write", "timestamp_unix": 1779607409.77134}
+{"batch_size": 1, "duration_ms": 1.132, "event": "event_store_write", "timestamp_unix": 1779607409.773868}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": null, "success": false, "task_id": "0a025671-c578-4f31-bfe8-93e0d785f69b", "timestamp_unix": 1779607409.789298}
+{"duration_ms": 40.718, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "0a025671-c578-4f31-bfe8-93e0d785f69b", "timestamp_unix": 1779607409.789298}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "cd13ad62-d84d-4e2c-b497-9dab35edb389", "timestamp_unix": 1779607409.79198}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607409.79299}
+{"duration_ms": 0.911, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607409.79399}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607409.808937}
+{"batch_size": 1, "duration_ms": 1.838, "event": "event_store_write", "timestamp_unix": 1779607409.814134}
+{"batch_size": 1, "duration_ms": 0.872, "event": "event_store_write", "timestamp_unix": 1779607409.817134}
+{"batch_size": 1, "duration_ms": 1.179, "event": "event_store_write", "timestamp_unix": 1779607409.819132}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607410.837256, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607410.838802}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607410.839787, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607410.840786, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607411.859727, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607411.862769}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607411.863778, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607411.864777, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1025.442, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607411.865778, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 186.072, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607412.050984, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.06, "event": "event_store_write", "timestamp_unix": 1779607412.073994}
+{"batch_size": 1, "duration_ms": 0.906, "event": "event_store_write", "timestamp_unix": 1779607412.075002}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607413.239775, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607413.24235}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607413.245798, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607413.246795, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 178.021, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607413.424987, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.22, "event": "event_store_write", "timestamp_unix": 1779607413.427507}
+{"batch_size": 1, "duration_ms": 1.043, "event": "event_store_write", "timestamp_unix": 1779607413.429502}
+{"batch_size": 1, "duration_ms": 0.82, "event": "event_store_write", "timestamp_unix": 1779607413.432042}
+{"duration_ms": 0.883, "event": "event_store_query", "filters": {"event_type": "workflow_step"}, "row_count": 5, "timestamp_unix": 1779607413.434064}
+{"event": "etd_learned", "sig": "general-llm", "task_id": "cd13ad62-d84d-4e2c-b497-9dab35edb389", "timestamp_unix": 1779607413.436061}
+{"batch_size": 1, "duration_ms": 1.075, "event": "event_store_write", "timestamp_unix": 1779607413.438063}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:1.5b-instruct", "success": true, "task_id": "cd13ad62-d84d-4e2c-b497-9dab35edb389", "timestamp_unix": 1779607413.457353}
+{"duration_ms": 3667.285, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "cd13ad62-d84d-4e2c-b497-9dab35edb389", "timestamp_unix": 1779607413.459351}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "a9236f5a-ce67-421d-b644-ded9dc3264cb", "timestamp_unix": 1779607413.460863}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779607413.461455}
+{"duration_ms": 0.785, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779607413.462989}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779607413.478161}
+{"batch_size": 1, "duration_ms": 1.241, "event": "event_store_write", "timestamp_unix": 1779607413.48229}
+{"batch_size": 1, "duration_ms": 0.915, "event": "event_store_write", "timestamp_unix": 1779607413.484313}
+{"batch_size": 1, "duration_ms": 1.08, "event": "event_store_write", "timestamp_unix": 1779607413.486316}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607414.559047, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607414.562183}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607414.563537, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607414.564325, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779607415.592954, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779607415.596418}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607415.59742, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607415.598419, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1034.468, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607415.599417, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 182.734, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779607415.780838, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.276, "event": "event_store_write", "timestamp_unix": 1779607415.802283}
+{"batch_size": 1, "duration_ms": 1.131, "event": "event_store_write", "timestamp_unix": 1779607415.805761}
+{"action": "list_files", "event": "sandbox_execution_started", "task_id": "a9236f5a-ce67-421d-b644-ded9dc3264cb", "timestamp_unix": 1779607415.806731}
+{"action": "list_files", "event": "sandbox_execution_completed", "success": true, "task_id": "a9236f5a-ce67-421d-b644-ded9dc3264cb", "timestamp_unix": 1779607415.818535}
+{"batch_size": 1, "duration_ms": 0.994, "event": "event_store_write", "timestamp_unix": 1779607415.820534}
+{"batch_size": 1, "duration_ms": 0.895, "event": "event_store_write", "timestamp_unix": 1779607415.822348}
+{"batch_size": 1, "duration_ms": 0.841, "event": "event_store_write", "timestamp_unix": 1779607415.824122}
+{"duration_ms": 1.141, "event": "event_store_query", "filters": {"event_type": "workflow_step"}, "row_count": 6, "timestamp_unix": 1779607415.826648}
+{"event": "etd_learned", "sig": "list-files", "task_id": "a9236f5a-ce67-421d-b644-ded9dc3264cb", "timestamp_unix": 1779607415.828679}
+{"batch_size": 1, "duration_ms": 1.29, "event": "event_store_write", "timestamp_unix": 1779607415.831722}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:7b", "success": true, "task_id": "a9236f5a-ce67-421d-b644-ded9dc3264cb", "timestamp_unix": 1779607415.848689}
+{"duration_ms": 2388.831, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "a9236f5a-ce67-421d-b644-ded9dc3264cb", "timestamp_unix": 1779607415.849664}
+{"duration_ms": 1.363, "event": "event_store_query", "filters": {"event_type": "audit_log"}, "row_count": 8, "timestamp_unix": 1779607415.853325}
+{"duration_ms": 1.063, "event": "event_store_query", "filters": {"event_type": "sandbox_invocation"}, "row_count": 6, "timestamp_unix": 1779607415.855327}
+{"duration_ms": 0.996, "event": "event_store_query", "filters": {"event_type": "task_completed"}, "row_count": 10, "timestamp_unix": 1779607415.857844}
+{"duration_ms": 1.318, "event": "event_store_query", "filters": {"event_type": "task_error"}, "row_count": 2, "timestamp_unix": 1779607415.861356}
+{"db_path": "C:\\Users\\Gaurav\\Documents\\NEXUS-R\\nexus-r\\.phase-c\\telemetry-audit\\.nexus-r\\events.sqlite3", "event": "event_store_closed", "timestamp_unix": 1779607415.875997}
+{"event": "orchestrator_closed", "timestamp_unix": 1779607415.883855}
+{"event": "span_start", "span": "orchestrator.initialize", "timestamp_unix": 1779609560.884974}
+{"db_path": "C:\\Users\\Gaurav\\Documents\\NEXUS-R\\nexus-r\\.phase-c\\telemetry-audit\\.nexus-r\\events.sqlite3", "event": "event_store_initialize", "timestamp_unix": 1779609560.886999}
+{"duration_ms": 70.82, "event": "span_end", "span": "orchestrator.initialize", "status": "ok", "timestamp_unix": 1779609560.955395}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "83da1a68-4721-4bbf-9cf0-f88a96365027", "timestamp_unix": 1779609560.957395}
+{"event": "model_warm_up_started", "provider": "ollama/qwen2.5:1.5b-instruct", "timestamp_unix": 1779609560.979821}
+{"batch_size": 1, "duration_ms": 7.384, "event": "event_store_write", "timestamp_unix": 1779609560.990846}
+{"batch_size": 1, "duration_ms": 1.507, "event": "event_store_write", "timestamp_unix": 1779609560.99402}
+{"batch_size": 1, "duration_ms": 0.954, "event": "event_store_write", "timestamp_unix": 1779609560.996139}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609562.03907, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609562.042985}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609562.043996, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609562.04451, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609563.07654, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609563.078781}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609563.079795, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609563.080796, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1037.139, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609563.081795, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 190.115, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609563.271049, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.086, "event": "event_store_write", "timestamp_unix": 1779609563.295292}
+{"batch_size": 1, "duration_ms": 0.8, "event": "event_store_write", "timestamp_unix": 1779609563.297829}
+{"action": "read_file", "event": "sandbox_execution_started", "task_id": "83da1a68-4721-4bbf-9cf0-f88a96365027", "timestamp_unix": 1779609563.298837}
+{"action": "read_file", "event": "sandbox_execution_completed", "success": false, "task_id": "83da1a68-4721-4bbf-9cf0-f88a96365027", "timestamp_unix": 1779609563.301838}
+{"batch_size": 1, "duration_ms": 1.07, "event": "event_store_write", "timestamp_unix": 1779609563.303981}
+{"batch_size": 1, "duration_ms": 2.038, "event": "event_store_write", "timestamp_unix": 1779609563.307006}
+{"batch_size": 1, "duration_ms": 1.088, "event": "event_store_write", "timestamp_unix": 1779609563.309999}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:1.5b-instruct", "success": false, "task_id": "83da1a68-4721-4bbf-9cf0-f88a96365027", "timestamp_unix": 1779609563.325315}
+{"duration_ms": 2369.215, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "83da1a68-4721-4bbf-9cf0-f88a96365027", "timestamp_unix": 1779609563.32582}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "1580e317-f20e-4ca7-b3dc-b04790c3f042", "timestamp_unix": 1779609563.327832}
+{"batch_size": 1, "duration_ms": 0.939, "event": "event_store_write", "timestamp_unix": 1779609563.344423}
+{"batch_size": 1, "duration_ms": 1.199, "event": "event_store_write", "timestamp_unix": 1779609563.34743}
+{"batch_size": 1, "duration_ms": 0.999, "event": "event_store_write", "timestamp_unix": 1779609563.349433}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609564.372852, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609564.375376}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609564.376406, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609564.377524, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609565.384572, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609565.386819}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609565.387826, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609565.388819, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1012.218, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609565.389714, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 189.312, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609565.578187, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.015, "event": "event_store_write", "timestamp_unix": 1779609565.603172}
+{"batch_size": 1, "duration_ms": 1.258, "event": "event_store_write", "timestamp_unix": 1779609565.60648}
+{"action": "run_terminal", "event": "sandbox_execution_started", "task_id": "1580e317-f20e-4ca7-b3dc-b04790c3f042", "timestamp_unix": 1779609565.607502}
+{"action": "run_terminal", "error": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "sandbox_execution_failed", "task_id": "1580e317-f20e-4ca7-b3dc-b04790c3f042", "timestamp_unix": 1779609565.608582}
+{"batch_size": 1, "duration_ms": 0.902, "event": "event_store_write", "timestamp_unix": 1779609565.610535}
+{"duration_ms": 2283.474, "error": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "span_end", "span": "orchestrator.run_task", "status": "error", "task_id": "1580e317-f20e-4ca7-b3dc-b04790c3f042", "timestamp_unix": 1779609565.61148}
+{"error_message": "Shell chaining and redirection are not allowed.", "error_type": "SandboxExecutionError", "event": "orchestrator_task_failed", "provider_info": null, "task_id": "1580e317-f20e-4ca7-b3dc-b04790c3f042", "timestamp_unix": 1779609565.61148}
+{"batch_size": 1, "duration_ms": 0.902, "event": "event_store_write", "timestamp_unix": 1779609565.614055}
+{"batch_size": 1, "duration_ms": 0.912, "event": "event_store_write", "timestamp_unix": 1779609565.616536}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/llama3:70b", "success": false, "task_id": "1580e317-f20e-4ca7-b3dc-b04790c3f042", "timestamp_unix": 1779609565.632924}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "4c3c3cbe-fe40-4618-b60d-cddf9e4a0877", "timestamp_unix": 1779609565.633938}
+{"batch_size": 1, "duration_ms": 0.905, "event": "event_store_write", "timestamp_unix": 1779609565.651237}
+{"batch_size": 1, "duration_ms": 1.084, "event": "event_store_write", "timestamp_unix": 1779609565.652872}
+{"batch_size": 1, "duration_ms": 1.025, "event": "event_store_write", "timestamp_unix": 1779609565.655405}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": null, "success": false, "task_id": "4c3c3cbe-fe40-4618-b60d-cddf9e4a0877", "timestamp_unix": 1779609565.670584}
+{"duration_ms": 37.242, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "4c3c3cbe-fe40-4618-b60d-cddf9e4a0877", "timestamp_unix": 1779609565.671583}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "b1de2dd3-257f-4769-91e9-0f320e913da9", "timestamp_unix": 1779609565.673216}
+{"batch_size": 1, "duration_ms": 0.985, "event": "event_store_write", "timestamp_unix": 1779609565.690152}
+{"batch_size": 1, "duration_ms": 0.944, "event": "event_store_write", "timestamp_unix": 1779609565.692689}
+{"batch_size": 1, "duration_ms": 1.327, "event": "event_store_write", "timestamp_unix": 1779609565.69437}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609566.705455, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609566.709689}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609566.710711, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609566.710711, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609567.728194, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609567.730709}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609567.731707, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609567.732707, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 1022.391, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609567.733855, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 172.85, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609567.90559, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.043, "event": "event_store_write", "timestamp_unix": 1779609567.927997}
+{"batch_size": 1, "duration_ms": 1.143, "event": "event_store_write", "timestamp_unix": 1779609567.930999}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609568.956305, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609568.958869}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609568.959903, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609568.960882, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 191.976, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609569.152715, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.321, "event": "event_store_write", "timestamp_unix": 1779609569.155709}
+{"batch_size": 1, "duration_ms": 1.411, "event": "event_store_write", "timestamp_unix": 1779609569.159709}
+{"batch_size": 1, "duration_ms": 0.757, "event": "event_store_write", "timestamp_unix": 1779609569.161707}
+{"duration_ms": 3.206, "event": "event_store_query", "filters": {"event_type": "workflow_step"}, "row_count": 8, "timestamp_unix": 1779609569.165813}
+{"event": "etd_learned", "sig": "general-llm", "task_id": "b1de2dd3-257f-4769-91e9-0f320e913da9", "timestamp_unix": 1779609569.167799}
+{"batch_size": 1, "duration_ms": 0.93, "event": "event_store_write", "timestamp_unix": 1779609569.169816}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:1.5b-instruct", "success": true, "task_id": "b1de2dd3-257f-4769-91e9-0f320e913da9", "timestamp_unix": 1779609569.193126}
+{"duration_ms": 3521.24, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "b1de2dd3-257f-4769-91e9-0f320e913da9", "timestamp_unix": 1779609569.194142}
+{"event": "span_start", "span": "orchestrator.run_task", "task_id": "bd189a80-f42d-40b4-8fc9-84f45885e046", "timestamp_unix": 1779609569.196611}
+{"batch_size": 1, "duration_ms": 1.384, "event": "event_store_write", "timestamp_unix": 1779609569.215307}
+{"batch_size": 1, "duration_ms": 1.066, "event": "event_store_write", "timestamp_unix": 1779609569.217325}
+{"batch_size": 1, "duration_ms": 1.381, "event": "event_store_write", "timestamp_unix": 1779609569.22032}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609570.218532, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609570.220379}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609570.221378, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609570.222887, "uses_mock": true}
+{"event": "provider_request_started", "fallback_used": false, "provider": "ollama/qwen2.5:1.5b-instruct", "provider_kind": "local", "timestamp_unix": 1779609571.211274, "uses_mock": false}
+{"chain_position": 1, "error_message": "No module named 'litellm'", "event": "provider_attempt_failed", "failure_class": "unexpected:ModuleNotFoundError", "fallback_decision": "attempt_next_in_chain", "fallback_was_already": false, "provider": "ollama/qwen2.5:1.5b-instruct", "retryable": true, "tier": "local", "timestamp_unix": 1779609571.214804}
+{"chain_position": 2, "event": "provider_fallback_activated", "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609571.215311, "total_in_chain": 3}
+{"event": "provider_request_started", "fallback_used": true, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609571.216319, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 994.521, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609571.217342, "uses_mock": true}
+{"cost": 0.02, "event": "provider_request_completed", "fallback_used": true, "latency_ms": 178.084, "provider": "mock-byok", "provider_kind": "byok", "timestamp_unix": 1779609571.394412, "uses_mock": true}
+{"batch_size": 1, "duration_ms": 1.008, "event": "event_store_write", "timestamp_unix": 1779609571.422607}
+{"batch_size": 1, "duration_ms": 1.082, "event": "event_store_write", "timestamp_unix": 1779609571.425218}
+{"action": "list_files", "event": "sandbox_execution_started", "task_id": "bd189a80-f42d-40b4-8fc9-84f45885e046", "timestamp_unix": 1779609571.426222}
+{"action": "list_files", "event": "sandbox_execution_completed", "success": true, "task_id": "bd189a80-f42d-40b4-8fc9-84f45885e046", "timestamp_unix": 1779609571.442809}
+{"batch_size": 1, "duration_ms": 1.362, "event": "event_store_write", "timestamp_unix": 1779609571.445543}
+{"batch_size": 1, "duration_ms": 0.879, "event": "event_store_write", "timestamp_unix": 1779609571.447565}
+{"batch_size": 1, "duration_ms": 1.2, "event": "event_store_write", "timestamp_unix": 1779609571.449569}
+{"duration_ms": 1.316, "event": "event_store_query", "filters": {"event_type": "workflow_step"}, "row_count": 9, "timestamp_unix": 1779609571.451559}
+{"event": "etd_learned", "sig": "list-files", "task_id": "bd189a80-f42d-40b4-8fc9-84f45885e046", "timestamp_unix": 1779609571.454077}
+{"batch_size": 1, "duration_ms": 1.952, "event": "event_store_write", "timestamp_unix": 1779609571.456624}
+{"event": "orchestrator_task_finished", "persistence_warning": null, "routing_model": "ollama/qwen2.5:7b", "success": true, "task_id": "bd189a80-f42d-40b4-8fc9-84f45885e046", "timestamp_unix": 1779609571.472734}
+{"duration_ms": 2277.561, "event": "span_end", "span": "orchestrator.run_task", "status": "ok", "task_id": "bd189a80-f42d-40b4-8fc9-84f45885e046", "timestamp_unix": 1779609571.474328}
+{"duration_ms": 1.384, "event": "event_store_query", "filters": {"event_type": "audit_log"}, "row_count": 12, "timestamp_unix": 1779609571.479857}
+{"duration_ms": 1.017, "event": "event_store_query", "filters": {"event_type": "sandbox_invocation"}, "row_count": 9, "timestamp_unix": 1779609571.481874}
+{"duration_ms": 1.027, "event": "event_store_query", "filters": {"event_type": "task_completed"}, "row_count": 15, "timestamp_unix": 1779609571.484303}
+{"duration_ms": 1.079, "event": "event_store_query", "filters": {"event_type": "task_error"}, "row_count": 3, "timestamp_unix": 1779609571.486323}
+{"db_path": "C:\\Users\\Gaurav\\Documents\\NEXUS-R\\nexus-r\\.phase-c\\telemetry-audit\\.nexus-r\\events.sqlite3", "event": "event_store_closed", "timestamp_unix": 1779609571.499915}
+{"event": "orchestrator_closed", "timestamp_unix": 1779609571.511471}

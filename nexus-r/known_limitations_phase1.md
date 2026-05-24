@@ -27,6 +27,14 @@
 3. Session state files exist in the repo from prior work and remain out of Phase 1 scope.
 4. Prompt injection is reduced by architecture and task gating, not solved.
 
+## ETD-Specific Limitations
+
+1. ETD latency reduction 48.5% — below 2x target due to sandbox overhead. Cached execution still invokes the sandbox for each step, so the ceiling is sandbox execution time, not zero.
+2. ETD hit rate 80% — improves with more task history. The first execution always misses; steady-state hit rate depends on repetition frequency and store retention policy.
+3. Model-provider tool steps cannot be cached. The applicator only supports `execution_sandbox` tool steps; `model_provider` steps return None, causing fallback to normal routing.
+4. Terminal command parameters are not preserved in ETD entries. The trace records `action=run_terminal` but the actual command lives in `input_data`, which is not stored in the `ToolStep` — replaying terminal ETD entries will fail if the command is not re-derived from current parameters.
+5. ETD store is in-memory only, bound to the orchestrator instance lifetime. Restarting the process loses all cached entries. No persistence or recovery mechanism exists.
+
 ## Validation Limitations
 
 1. Real BYOK fallback was not proven.

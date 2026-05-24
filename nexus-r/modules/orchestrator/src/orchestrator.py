@@ -56,18 +56,21 @@ class MainOrchestrator:
         self.etd_pipeline = ETDPipeline()
         self.etd_applicator = ETDApplicator(self.sandbox, self.etd_pipeline.store)
         self._active_tasks = 0
+        self._initialized = False
 
     async def initialize(self) -> None:
+        if self._initialized:
+            return
         async with self.telemetry.span("orchestrator.initialize"):
             await self.event_store.initialize()
             asyncio.create_task(self.router.warm_up(), name="model-warm-up")
             self.session_manager.initialize()
-            if self.session_id is None:
-                self.session_id = self.session_manager.get_or_create_default_session()
-                resume = self.session_manager.resume_session(self.session_id, self.config.workspace_root)
-                working_state = resume.state.get("working_state")
-                if isinstance(working_state, dict):
-                    self.working_state.restore(working_state)
+            self.session_id = self.session_manager.get_or_create_default_session()
+            resume = self.session_manager.resume_session(self.session_id, self.config.workspace_root)
+            working_state = resume.state.get("working_state")
+            if isinstance(working_state, dict):
+                self.working_state.restore(working_state)
+            self._initialized = True
 
     async def close(self) -> None:
         await self.event_store.close()
@@ -244,6 +247,7 @@ class MainOrchestrator:
                     trace_tool = "model_provider"
                     trace_model = str(completion["model_name"])
                     trace_cost = float(completion["cost"])
+                    trace_latency_ms = float(completion.get("latency_ms", 0.0))
                     verification = "generated"
                     trace_parent_id = provider_result_id
                 else:
@@ -251,6 +255,7 @@ class MainOrchestrator:
                     trace_tool = "execution_sandbox"
                     trace_model = routing.selected_model
                     trace_cost = routing.cost_estimate if result.success else 0.0
+                    trace_latency_ms = 0.0
                     verification = "passed" if result.success else "failed"
                     trace_parent_id = routing_event_id
                 trace_event_id = await self.trace_recorder.record_step(
@@ -269,7 +274,7 @@ class MainOrchestrator:
                 if result.success:
                     await self.cost_tracker.record(task.task_id, trace_cost, trace_model, task.tier)
                     trace = await self.trace_recorder.get_trace(task.task_id)
-                    etd_entry = await self.etd_pipeline.process_success(trace, normalized_input=intent.normalized_input)
+                    etd_entry = await self.etd_pipeline.process_success(trace, normalized_input=intent.normalized_input, cost=trace_cost, latency_ms=trace_latency_ms)
                     if etd_entry is not None:
                         self.telemetry.emit("etd_learned", task_id=task.task_id, sig=etd_entry.intent_signature)
                 self.router.record_outcome(

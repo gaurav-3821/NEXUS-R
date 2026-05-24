@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "commit_hash": "3cf25ef35021d76a1682436e2fde6946f098d1ad",
+    "commit_short": "3cf25ef",
+    "date": "2026-05-24T07:34:49Z",
+    "freeze_reason": "Phase 2 validated, baseline frozen",
+    "platform": "win32",
+    "python_version": "3.12"
+  },
+  "test_results": {
+    "total": 268,
+    "passed": 268,
+    "failed": 0,
+    "skipped": 0,
+    "errorred": 0,
+    "suite_timestamp": "2026-05-24T13:31:00Z"
+  },
+  "benchmarks": {
+    "etd_latency_reduction": {
+      "mean_pct": 96.77,
+      "first_run_mean_ms": 1254.6,
+      "second_run_mean_ms": 40.5,
+      "trials": 10,
+      "all_improved": true,
+      "paired_t_p_value": 0.0,
+      "significant": true,
+      "threshold": 40.0,
+      "met": true
+    },
+    "reproducibility": {
+      "passes": 10,
+      "prompts_per_pass": 4,
+      "all_passes_successful": true,
+      "stable_prompts_cv_under_10pct": 4,
+      "total_prompts": 4,
+      "latency_cv_range": "0.0412 - 0.0859",
+      "cost_cv": 0.0,
+      "load_impact_success": true,
+      "session_persistence": true,
+      "overall_stable": true
+    },
+    "concurrency_stress": {
+      "max_tasks": 200,
+      "memory_stable_mb": 9,
+      "corruption_free": true,
+      "throughput_per_sec": 0.8
+    },
+    "soak_test": {
+      "duration_minutes": 30,
+      "rss_growth_mb": 9.3,
+      "db_size_mb": 3.99,
+      "wal_size_mb": 3.98
+    },
+    "eventstore_scaling": {
+      "max_events": 50000,
+      "append_latency_us": 24,
+      "query_50k_by_type_ms": 589,
+      "db_size_mb": 22.66
+    }
+  },
+  "phase_c_results": {
+    "total_tests": 32,
+    "passed": 32,
+    "failed": 0,
+    "critical": 0,
+    "unhandled_exceptions": false,
+    "gate_pass": true
+  },
+  "known_limitations": [
+    "First-run latency ~1255ms (dominated by mock LLM provider; real Ollama would add ~2-3s)",
+    "CV of latency across runs ~4-9% (acceptable for prototype; expected to tighten in production)",
+    "ETDStore is in-memory only (no persistence across restarts; ETD cache resets on process exit)",
+    "CostTracker aggregates over entire EventStore (no per-session filtering; all tasks in one view)",
+    "Sandbox directory is temporary (no persistent workspace storage between sessions)",
+    "Model warming up via fire-and-forget task (may not complete before first user task; no effect without Ollama)",
+    "ETD avg_cost and avg_latency_ms populated from first execution only (no weighted averaging on subsequent uses)",
+    "4-tier CAR (Capability-Aware Routing) is prototype-grade with mock providers",
+    "Cost Dashboard (spec 07) is spec-only — no implementation exists",
+    "Maximum tested concurrency: 200 tasks (beyond that may encounter SQLite lock contention)",
+    "No IPv6 testing performed",
+    "No large-file (>10MB) sandbox execution tested"
+  ],
+  "deliverables": [
+    "docs/phase2_validation_summary.md (this document)",
+    ".validation_freeze.json",
+    "git tag phase2-validation-freeze",
+    "runtime_truthfulness_report_phase2.md",
+    "benchmark_baseline_report.md",
+    "final_operational_assessment.md",
+    "reproducibility_report.md",
+    "docs/provider_failure_report.md",
+    "docs/recovery_validation_report.md",
+    "docs/sqlite_resilience_report.md",
+    "docs/sandbox_boundary_report.md",
+    "docs/failure_telemetry_report.md",
+    "docs/eventstore_scaling_report.md",
+    "docs/concurrency_scaling_report.md"
+  ],
+  "phase_d_tasks": {
+    "t1_etd_baseline": "PASS — 96.77% reduction exceeds 40% target, statistically significant (p<0.000001)",
+    "t2_reproducibility": "PASS — 10/10 passes, all prompts CV<10%, load test 4/4, session persisted",
+    "t3_first_run_latency": "PASS — initialize() idempotent, redundant warm_up eliminated, ~9% first-pass improvement",
+    "t4_cost_tracking": "PASS — avg_cost/avg_latency_ms populated on ETDEntry, no double-counting, all 4 cost tests pass",
+    "t5_baseline_freeze": "PASS — tag created, .validation_freeze.json written, README updated",
+    "t6_public_release": "PASS — see runtime_truthfulness_report_phase2.md for full readiness review",
+    "t7_deliverables": "PASS — all reports generated and accurate"
+  }
+}

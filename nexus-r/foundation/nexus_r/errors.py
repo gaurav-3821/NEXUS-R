@@ -28,3 +28,53 @@ class SessionStateError(NexusError):
 
 class SessionPathMismatchError(SessionStateError):
     """Raised when a session is resumed from a different canonical workspace."""
+
+
+class ProviderError(NexusError):
+    """Base for all provider invocation errors."""
+
+    def __init__(self, message: str, *, provider: str, tier: str, failure_class: str, retryable: bool, fallback_decision: str):
+        self.provider = provider
+        self.tier = tier
+        self.failure_class = failure_class
+        self.retryable = retryable
+        self.fallback_decision = fallback_decision
+        super().__init__(message)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "provider": self.provider,
+            "tier": self.tier,
+            "failure_class": self.failure_class,
+            "retryable": self.retryable,
+            "fallback_decision": self.fallback_decision,
+            "message": str(self),
+        }
+
+
+class ProviderConnectionError(ProviderError):
+    """Provider is unreachable."""
+
+
+class ProviderTimeoutError(ProviderError):
+    """Provider did not respond within the timeout window."""
+
+
+class ProviderAuthError(ProviderError):
+    """Provider rejected credentials."""
+
+
+class ProviderRateLimitError(ProviderError):
+    """Provider returned a rate-limit response."""
+
+
+class ProviderModelUnavailableError(ProviderError):
+    """Provider does not have the requested model deployed."""
+
+
+class ProviderMalformedResponseError(ProviderError):
+    """Provider returned an unparseable or incomplete response."""
+
+
+class ProviderEmptyResponseError(ProviderError):
+    """Provider returned a response with no usable content."""
