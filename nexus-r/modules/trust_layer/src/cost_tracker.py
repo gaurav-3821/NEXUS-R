@@ -6,8 +6,9 @@ from nexus_r.events import Event, PermissionTier
 
 
 class CostTracker:
-    def __init__(self, event_store) -> None:
+    def __init__(self, event_store, ws_handler=None) -> None:
         self.event_store = event_store
+        self._ws_handler = ws_handler
 
     async def record(self, task_id: str, amount: float, model: str, tier: PermissionTier) -> None:
         event = Event(
@@ -21,6 +22,13 @@ class CostTracker:
             },
         )
         await self.event_store.append(event)
+        if self._ws_handler is not None:
+            await self._ws_handler.notify_cost_update(
+                task_id=task_id,
+                amount=amount,
+                model=model,
+                tier=tier.value,
+            )
 
     async def summary(self) -> dict[str, object]:
         totals: dict[str, float] = {"total_cost": 0.0}

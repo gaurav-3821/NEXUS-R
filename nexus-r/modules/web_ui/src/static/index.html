@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEXUS-R Cost Dashboard</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>NEXUS-R Cost Dashboard</h1>
+  <div class="connection-status" id="connectionStatus">Disconnected</div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" data-tab="overview">Overview</button>
+  <button class="tab" data-tab="tasks">Tasks</button>
+  <button class="tab" data-tab="audit">Audit Log</button>
+  <button class="tab" data-tab="etd">ETD Cache</button>
+  <button class="tab" data-tab="models">Models</button>
+</nav>
+
+<main>
+  <section id="overview" class="tab-content active">
+    <div class="summary-cards" id="summaryCards">
+      <div class="card"><h3>Total Spend</h3><p class="big-number" id="totalCost">$0.00</p></div>
+      <div class="card"><h3>Tasks</h3><p class="big-number" id="taskCount">0</p></div>
+      <div class="card"><h3>Running Total</h3><p class="big-number" id="runningTotal">$0.00</p></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-card">
+        <h3>Cost by Tier</h3>
+        <div class="bar-chart" id="tierChart"></div>
+      </div>
+      <div class="chart-card">
+        <h3>Cost by Model</h3>
+        <div class="bar-chart" id="modelChart"></div>
+      </div>
+    </div>
+    <div class="recent-tasks">
+      <h3>Recent Tasks</h3>
+      <table id="recentTasksTable">
+        <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th></tr></thead>
+        <tbody id="recentTasksBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="tasks" class="tab-content">
+    <div class="filters">
+      <input type="text" id="taskFilterTier" placeholder="Filter by tier (e.g. T1)">
+      <input type="text" id="taskFilterModel" placeholder="Filter by model">
+      <button id="taskFilterBtn">Apply</button>
+    </div>
+    <table>
+      <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th><th>Timestamp</th></tr></thead>
+      <tbody id="tasksBody"></tbody>
+    </table>
+    <div class="pagination">
+      <button id="tasksPrev" disabled>Previous</button>
+      <span id="tasksPageInfo">Page 1</span>
+      <button id="tasksNext">Next</button>
+    </div>
+  </section>
+
+  <section id="audit" class="tab-content">
+    <div class="filters">
+      <input type="text" id="auditFilterTaskId" placeholder="Task ID">
+      <input type="text" id="auditFilterModel" placeholder="Model">
+      <input type="date" id="auditFilterStart">
+      <input type="date" id="auditFilterEnd">
+      <button id="auditFilterBtn">Search</button>
+    </div>
+    <table>
+      <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th><th>Timestamp</th></tr></thead>
+      <tbody id="auditBody"></tbody>
+    </table>
+    <div class="pagination">
+      <button id="auditPrev" disabled>Previous</button>
+      <span id="auditPageInfo">Page 1</span>
+      <button id="auditNext">Next</button>
+    </div>
+  </section>
+
+  <section id="etd" class="tab-content">
+    <table>
+      <thead><tr><th>ID</th><th>Intent</th><th>Hit Rate</th><th>Success Rate</th><th>Avg Cost</th><th>Avg Latency</th><th>Status</th></tr></thead>
+      <tbody id="etdBody"></tbody>
+    </table>
+  </section>
+
+  <section id="models" class="tab-content">
+    <table>
+      <thead><tr><th>Model</th><th>Total Cost</th><th>Tasks</th><th>Avg Latency (ms)</th></tr></thead>
+      <tbody id="modelsBody"></tbody>
+    </table>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
