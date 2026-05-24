@@ -7,7 +7,7 @@ NEXUS-R is a personal agent runtime focused on auditable execution, conservative
 - Phase 2 validation baseline frozen at `77423c0` (`phase2-validation-freeze`)
 - Six active subsystems: Input Gateway, Cognition Router, Execution Sandbox, State Core, Workflow Engine, Trust Layer
 - Cost Dashboard included for API- and WebSocket-based runtime telemetry
-- Validation artifacts and reproducibility reports live under [`docs/`](C:\Users\Gaurav\Documents\NEXUS-R\nexus-r\docs)
+- Validation artifacts and reproducibility reports live under [`docs/`](docs/)
 
 ## Core Capabilities
 
@@ -65,8 +65,8 @@ Browser <-> FastAPI (port 8400) <-> EventStore (SQLite)
 
 ## Validation Highlights
 
-- Phase 2 validation summary: [`docs/phase2_validation_summary.md`](C:\Users\Gaurav\Documents\NEXUS-R\nexus-r\docs\phase2_validation_summary.md)
-- Cost dashboard deployment guide: [`docs/cost_dashboard_deployment.md`](C:\Users\Gaurav\Documents\NEXUS-R\nexus-r\docs\cost_dashboard_deployment.md)
-- EventStore scaling report: [`docs/eventstore_scaling_report.md`](C:\Users\Gaurav\Documents\NEXUS-R\nexus-r\docs\eventstore_scaling_report.md)
-- Provider failure report: [`docs/provider_failure_report.md`](C:\Users\Gaurav\Documents\NEXUS-R\nexus-r\docs\provider_failure_report.md)
-- Recovery guide for local test environments: [`docs/test_environment_recovery.md`](C:\Users\Gaurav\Documents\NEXUS-R\nexus-r\docs\test_environment_recovery.md)
+- Phase 2 validation summary: [`docs/phase2_validation_summary.md`](docs/phase2_validation_summary.md)
+- Cost dashboard deployment guide: [`docs/cost_dashboard_deployment.md`](docs/cost_dashboard_deployment.md)
+- EventStore scaling report: [`docs/eventstore_scaling_report.md`](docs/eventstore_scaling_report.md)
+- Provider failure report: [`docs/provider_failure_report.md`](docs/provider_failure_report.md)
+- Recovery guide for local test environments: [`docs/test_environment_recovery.md`](docs/test_environment_recovery.md)
