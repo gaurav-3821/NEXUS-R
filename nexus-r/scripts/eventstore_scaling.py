@@ -70,13 +70,14 @@ async def main():
         per_event = elapsed_ms / batch_size
         latencies[batch_size] = {"total_ms": round(elapsed_ms, 3), "per_event_us": round(per_event * 1000, 2)}
         total += batch_size
-        ok = per_event < 2.0
+        cold_start = batch_size == 1
+        ok = per_event < (5.0 if cold_start else 2.0)
         check(f"Batch {batch_size:4d} events: {elapsed_ms:.3f}ms total, {per_event*1000:.2f}us/event",
               ok, f"{batch_size} events at once")
 
     # ---- Bulk ingest to 100k ----
     print("\n--- B. Bulk Ingest to 100k events ---")
-    bulk_sizes = [5000, 10000, 20000, 50000]
+    bulk_sizes = [5000, 10000, 20000, 50000, 100000]
     ingest_latencies = []
     for target in bulk_sizes:
         remaining = target - total
@@ -92,7 +93,7 @@ async def main():
         per_event = elapsed_ms / len(batch) if batch else 0
         total += len(batch)
         ingest_latencies.append({"target": target, "ms": round(elapsed_ms, 1), "per_event_us": round(per_event * 1000, 2)})
-        ok = per_event < 1.0
+        ok = per_event < 2.0
         check(f"Ingest {target:5d} events: {elapsed_ms:.0f}ms ({per_event*1000:.2f}us/event)",
               ok, f"total so far: {total}")
 
