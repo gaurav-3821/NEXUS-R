@@ -5,7 +5,7 @@
   <img src="https://img.shields.io/badge/Ollama-Validated-ED8B26?style=for-the-badge" alt="Ollama Validated" />
   <img src="https://img.shields.io/badge/License-MIT-4CAF50?style=for-the-badge" alt="License" />
   <img src="https://img.shields.io/badge/Phase%20D-Validated-00C853?style=for-the-badge" alt="Phase 2 Validated" />
-  <img src="https://img.shields.io/badge/Tests-268%20Passing-4CAF50?style=for-the-badge" alt="268 Tests Passing" />
+  <img src="https://img.shields.io/badge/Tests-339%20Passing-4CAF50?style=for-the-badge" alt="339 Tests Passing" />
   <img src="https://img.shields.io/badge/Code%20Style-Ruff-000000?style=for-the-badge" alt="Code Style" />
 </p>
 
@@ -111,7 +111,7 @@ NEXUS-R is engineered with a flat, modular architecture that avoids complex hier
 We are executing on a rigorous 4-phase rollout to achieve commercial viability:
 
 ```text
- Phase 1 & 1.5 [COMPLETE]       Phase 2 [IN PROGRESS]         Phase 3 [PLANNED]
+ Phase 1 & 1.5 [COMPLETE]       Phase 2 [COMPLETE]            Phase 3 [PLANNED]
  ┌──────────────────────┐       ┌──────────────────────┐      ┌──────────────────────┐
  │ Core CLI & Engine    │ ───>  │ ETD Cache Engine     │ ───> │ Web UI Dashboard     │
  │ 100-Task Stress Test │       │ 4-Tier Routing Logic │      │ Playwright Browser   │
@@ -120,7 +120,7 @@ We are executing on a rigorous 4-phase rollout to achieve commercial viability:
 ```
 
 *   **Phase 1 & 1.5 (Complete):** Hardened runtime foundation, verified local Ollama streaming, and stress-tested event store.
-*   **Phase 2 (Current):** Developing the core ETD caching compiler, advanced Capability-Aware Routing, and developer telemetry dashboard.
+*   **Phase 2 (Complete):** ETD caching, advanced Capability-Aware Routing validation, developer telemetry, and Cost Dashboard shipped and frozen.
 *   **Phase 3 (Next):** Playwright-driven browser automation integration, multi-user workspace state core, and sleek Web Dashboard.
 *   **Phase 4:** Community ETD Exchange (a marketplace to securely share and monetize anonymized, generalized workflows).
 
@@ -145,7 +145,7 @@ nexus run "list all python files in the workspace"
 
 ## ✅ Phase 2 Validation Status
 
-**Validated: 2026-05-24 | Commit: [3cf25ef](https://github.com/anomalyco/NEXUS-R/tree/3cf25ef) | 268/268 tests passing**
+**Validated: 2026-05-24 | Commit: [77423c0](https://github.com/gaurav-3821/NEXUS-R/tree/77423c0) | 339/339 tests passing**
 
 | Phase | Scope | Status |
 |---|---|---|
@@ -154,7 +154,7 @@ nexus run "list all python files in the workspace"
 | C — Failure Recovery | Provider chaos, session recovery, SQLite corruption, sandbox security, telemetry | ✅ PASS (32/32) |
 | D — Baseline Freeze | ETD 96.77% reduction, repro CV<10%, cost CV=0%, reports frozen | ✅ PASS |
 
-See [docs/phase2_validation_summary.md](nexus-r/docs/phase2_validation_summary.md) for full report.
+See [nexus-r/docs/phase2_validation_summary.md](nexus-r/docs/phase2_validation_summary.md) for the current frozen summary.
 
 ---
 

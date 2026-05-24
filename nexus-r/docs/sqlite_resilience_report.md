@@ -1,6 +1,6 @@
 # SQLite Resilience Report — Phase C
 
-Date: 2026-05-24 07:59 UTC
+Date: 2026-05-24 09:51 UTC
 
 **Database corruption and lock handling results.**
 
@@ -12,10 +12,10 @@ Date: 2026-05-24 07:59 UTC
 
 ## Individual Results
 
-- [PASS] WAL corruption: 300/100 pre-corruption events readable — readable=300
+- [PASS] WAL corruption: 500/100 pre-corruption events readable — readable=500
 - [PASS] WAL corruption: new events still writable
-- [PASS] Page corruption: 150 events readable — readable=150
-- [PASS] DB file lock: events still readable from separate connection — readable=30
+- [PASS] Page corruption: 250 events readable — readable=250
+- [PASS] DB file lock: events still readable from separate connection — readable=50
 
 ## Recoverability Classification
 - Recoverable failures: Provider timeouts, connection errors, stale sessions

@@ -1,19 +1,25 @@
 {
   "metadata": {
-    "commit_hash": "3cf25ef35021d76a1682436e2fde6946f098d1ad",
-    "commit_short": "3cf25ef",
-    "date": "2026-05-24T07:34:49Z",
-    "freeze_reason": "Phase 2 validated, baseline frozen",
+    "commit_hash": "77423c09b89fe0dbcc6eb242041bbd1ad25e064b",
+    "commit_short": "77423c0",
+    "date": "2026-05-24T13:31:54+05:30",
+    "freeze_reason": "Phase 2 validated, baseline frozen (including Cost Dashboard)",
     "platform": "win32",
     "python_version": "3.12"
   },
   "test_results": {
-    "total": 268,
-    "passed": 268,
+    "total": 339,
+    "passed": 339,
     "failed": 0,
     "skipped": 0,
     "errorred": 0,
-    "suite_timestamp": "2026-05-24T13:31:00Z"
+    "suite_timestamp": "2026-05-24T21:29:00Z",
+    "dashboard_tests": {
+      "unit": 24,
+      "integration": 26,
+      "security": 21,
+      "all": 71
+    }
   },
   "benchmarks": {
     "etd_latency_reduction": {
@@ -52,10 +58,13 @@
       "wal_size_mb": 3.98
     },
     "eventstore_scaling": {
-      "max_events": 50000,
-      "append_latency_us": 24,
-      "query_50k_by_type_ms": 589,
-      "db_size_mb": 22.66
+      "max_events": 100000,
+      "append_latency_100_batch_us": 94.96,
+      "ingest_100K_time_ms": 2047,
+      "ingest_100K_per_event_us": 40.93,
+      "query_100K_by_type_ms": 3022,
+      "db_size_at_100K_mb": 90.69,
+      "bytes_per_event": 951
     }
   },
   "phase_c_results": {
@@ -66,6 +75,19 @@
     "unhandled_exceptions": false,
     "gate_pass": true
   },
+  "cost_dashboard": {
+    "fastapi_endpoints": 10,
+    "websocket_event_types": 5,
+    "unit_tests_passing": 24,
+    "integration_tests_passing": 26,
+    "security_tests_passing": 21,
+    "all_tests_passing": true,
+    "auth_required": true,
+    "rate_limiting": true,
+    "real_time_updates": true,
+    "etd_stats_integration": true,
+    "coverage_pct": 100
+  },
   "known_limitations": [
     "First-run latency ~1255ms (dominated by mock LLM provider; real Ollama would add ~2-3s)",
     "CV of latency across runs ~4-9% (acceptable for prototype; expected to tighten in production)",
@@ -75,10 +97,11 @@
     "Model warming up via fire-and-forget task (may not complete before first user task; no effect without Ollama)",
     "ETD avg_cost and avg_latency_ms populated from first execution only (no weighted averaging on subsequent uses)",
     "4-tier CAR (Capability-Aware Routing) is prototype-grade with mock providers",
-    "Cost Dashboard (spec 07) is spec-only — no implementation exists",
     "Maximum tested concurrency: 200 tasks (beyond that may encounter SQLite lock contention)",
     "No IPv6 testing performed",
-    "No large-file (>10MB) sandbox execution tested"
+    "No large-file (>10MB) sandbox execution tested",
+    "Rate limiting is per-process (not distributed); resets on restart",
+    "No TLS by default; reverse proxy required for production"
   ],
   "deliverables": [
     "docs/phase2_validation_summary.md (this document)",
@@ -94,15 +117,24 @@
     "docs/sandbox_boundary_report.md",
     "docs/failure_telemetry_report.md",
     "docs/eventstore_scaling_report.md",
-    "docs/concurrency_scaling_report.md"
+    "docs/concurrency_scaling_report.md",
+    "docs/cost_dashboard_deployment.md",
+    "modules/web_ui/src/app.py (FastAPI + WebSocket)",
+    "modules/web_ui/src/static/index.html (dashboard UI)",
+    "modules/web_ui/src/static/app.js (real-time WebSocket client)",
+    "modules/web_ui/src/static/style.css (responsive styling)",
+    "tests/unit/test_cost_dashboard.py",
+    "tests/integration/test_dashboard_api.py",
+    "tests/security/test_dashboard_security.py"
   ],
   "phase_d_tasks": {
     "t1_etd_baseline": "PASS — 96.77% reduction exceeds 40% target, statistically significant (p<0.000001)",
     "t2_reproducibility": "PASS — 10/10 passes, all prompts CV<10%, load test 4/4, session persisted",
     "t3_first_run_latency": "PASS — initialize() idempotent, redundant warm_up eliminated, ~9% first-pass improvement",
     "t4_cost_tracking": "PASS — avg_cost/avg_latency_ms populated on ETDEntry, no double-counting, all 4 cost tests pass",
-    "t5_baseline_freeze": "PASS — tag created, .validation_freeze.json written, README updated",
+    "t5_baseline_freeze": "PASS — tag created, .validation_freeze.json written, README updated (v2 with Cost Dashboard)",
     "t6_public_release": "PASS — see runtime_truthfulness_report_phase2.md for full readiness review",
-    "t7_deliverables": "PASS — all reports generated and accurate"
+    "t7_deliverables": "PASS — all reports generated and accurate",
+    "t8_cost_dashboard": "PASS — all 71 tests passing, auth + rate limiting + real-time WS + ETD stats + responsive UI"
   }
 }

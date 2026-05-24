@@ -18,3 +18,4 @@ build/
 .validation-workspace/
 test.txt
 .test-tmp/
+execution plan with prompts.pdf
