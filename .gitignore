@@ -17,3 +17,4 @@ build/
 .failure-workspace/
 .validation-workspace/
 test.txt
+.test-tmp/

@@ -35,7 +35,7 @@ async def test_router_marks_prior_success_and_escalates_byok(workspace, monkeypa
         suggested_tier=PermissionTier.T2,
     )
     decision = await router.route(intent)
-    assert decision.etd_match_found is True
+    assert decision.etd_match_found is False, "Router does not perform ETD matching — orchestrator owns that responsibility"
     assert decision.selected_model == config.models.byok_model
     await store.close()
 

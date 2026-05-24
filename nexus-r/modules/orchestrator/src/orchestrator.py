@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from nexus_r.config import NEXUSConfig
-from nexus_r.events import Action, Event, ExecutionResult, TaskDefinition
+from nexus_r.events import Action, Event, ExecutionResult, IntentResult, TaskDefinition
 from nexus_r.telemetry import RuntimeTelemetry
 
 from modules.cognition_router.src.router import CognitionRouter
@@ -17,6 +17,8 @@ from modules.trust_layer.src.cost_tracker import CostTracker
 from modules.trust_layer.src.permission_enforcer import PermissionEnforcer
 from modules.trust_layer.src.secret_registry import SecretRegistry
 from modules.workflow_engine.src.trace_recorder import TraceRecorder
+from modules.workflow_engine.src.pipeline import ETDPipeline
+from modules.workflow_engine.src.applicator import ETDApplicator
 
 
 class MainOrchestrator:
@@ -51,6 +53,8 @@ class MainOrchestrator:
         self.cost_tracker = CostTracker(self.event_store)
         self.trace_recorder = TraceRecorder(self.event_store)
         self.sandbox = ExecutionSandbox(config, self.event_store, telemetry=self.telemetry)
+        self.etd_pipeline = ETDPipeline()
+        self.etd_applicator = ETDApplicator(self.sandbox, self.etd_pipeline.store)
         self._active_tasks = 0
 
     async def initialize(self) -> None:
@@ -133,7 +137,7 @@ class MainOrchestrator:
                     metadata=task.parameters,
                 )
                 trace_event_id = intent_parsed_id
-                permission = self.permission_enforcer.check(action, task.tier)
+                permission = await self.permission_enforcer.check(action, task.tier)
                 audit_event_id = await self.event_store.append(
                     Event(
                         event_type="audit_log",
@@ -153,6 +157,32 @@ class MainOrchestrator:
                     result = ExecutionResult(success=False, message=permission.reason, error="permission denied")
                     return await self._finish(task, intent, None, result, permission, audit_event_id)
 
+                etd_match = await self.etd_pipeline.find_match(intent)
+                if etd_match is not None:
+                    etd_result = await self.etd_applicator.apply(
+                        etd_match, task.parameters, task.task_id,
+                    )
+                    if etd_result is not None and etd_result.success:
+                        trace_event_id = await self.trace_recorder.record_step(
+                            task_id=task.task_id,
+                            step_index=1,
+                            tool="etd_cache",
+                            action=intent.task_type,
+                            input_data=task.parameters,
+                            output_data={"message": etd_result.message, "output": etd_result.output},
+                            verification_result="passed",
+                            model_used="etd_cache",
+                            cost=0.0,
+                            tier=task.tier,
+                            parent_event_id=audit_event_id,
+                        )
+                        result = etd_result
+                        result.cost_incurred = 0.0
+                        if result.success:
+                            await self.cost_tracker.record(task.task_id, 0.0, "etd_cache", task.tier)
+                        return await self._finish(task, intent, None, result, permission, trace_event_id)
+                    self.telemetry.emit("etd_fallback", task_id=task.task_id, sig=etd_match.intent_signature)
+
                 routing = await self.router.route(intent)
                 self.working_state.set_routing(task.task_id, routing.model_dump(mode="json"))
                 self._checkpoint_session("routing_decided", status="running")
@@ -161,13 +191,18 @@ class MainOrchestrator:
                         event_type="routing_decided",
                         parent_event_id=audit_event_id,
                         data={
-                            "task_id": task.task_id,
-                            "selected_model": routing.selected_model,
-                            "selected_tier": routing.selected_tier.value,
-                            "cost_estimate": routing.cost_estimate,
-                            "rationale": routing.rationale,
-                            "etd_match_found": routing.etd_match_found,
-                        },
+                    "task_id": task.task_id,
+                    "selected_model": routing.selected_model,
+                    "selected_tier": routing.selected_tier.value,
+                    "cost_estimate": routing.cost_estimate,
+                    "rationale": routing.rationale,
+                    "etd_match_found": routing.etd_match_found,
+                    "car_tier": routing.car_tier,
+                    "car_tier_name": routing.car_tier_name,
+                    "parallel_probe_used": routing.parallel_probe_used,
+                    "de_escalated": routing.de_escalated,
+                    "requires_approval": routing.requires_approval,
+                },
                     )
                 )
                 trace_event_id = routing_event_id
@@ -233,6 +268,18 @@ class MainOrchestrator:
                 )
                 if result.success:
                     await self.cost_tracker.record(task.task_id, trace_cost, trace_model, task.tier)
+                    trace = await self.trace_recorder.get_trace(task.task_id)
+                    etd_entry = await self.etd_pipeline.process_success(trace, normalized_input=intent.normalized_input)
+                    if etd_entry is not None:
+                        self.telemetry.emit("etd_learned", task_id=task.task_id, sig=etd_entry.intent_signature)
+                self.router.record_outcome(
+                    task_type=intent.task_type,
+                    assigned_tier=routing.car_tier,
+                    actual_tier=routing.car_tier,
+                    success=result.success,
+                    cost=trace_cost,
+                    latency_ms=0.0,
+                )
                 return await self._finish(task, intent, routing, result, permission, trace_event_id)
         except Exception as exc:
             self._emit_task_failure_telemetry(

@@ -8,9 +8,10 @@ from modules.orchestrator.src.orchestrator import MainOrchestrator
 from modules.trust_layer.src.permission_enforcer import PermissionEnforcer
 
 
-def test_permission_enforcer_denies_unimplemented_tiers_and_redacts() -> None:
+@pytest.mark.asyncio
+async def test_permission_enforcer_denies_unimplemented_tiers_and_redacts() -> None:
     enforcer = PermissionEnforcer()
-    decision = enforcer.check(
+    decision = await enforcer.check(
         Action(
             name="delete_file",
             tier=PermissionTier.T4,
