@@ -1,72 +1,155 @@
 # NEXUS-R
 
-NEXUS-R is a personal agent runtime focused on auditable execution, conservative permissions, and measurable repeat-task acceleration through Execution Trace Distillation (ETD).
+**The Offline-First AI Agent Runtime — Auditable, Cost-Optimized, Self-Learning**
 
-## Current Status
+NEXUS-R is an open-source agent runtime that runs local LLMs by default, escalates to cloud models only when needed, and progressively learns from experience to cut costs by 40–60% on repeat tasks.
 
-- Phase 2 validation baseline frozen at `77423c0` (`phase2-validation-freeze`)
-- Six active subsystems: Input Gateway, Cognition Router, Execution Sandbox, State Core, Workflow Engine, Trust Layer
-- Cost Dashboard included for API- and WebSocket-based runtime telemetry
-- Validation artifacts and reproducibility reports live under [`docs/`](docs/)
+---
 
-## Core Capabilities
+## Why NEXUS-R?
 
-- Natural-language task intake with explicit intent classification
-- Conservative routing across local, BYOK, and managed model tiers
-- Workspace-scoped terminal and filesystem execution
-- SQLite-backed append-only event sourcing for auditability
-- ETD caching for repeat-task latency and cost reduction
-- Real-time cost and audit visibility through the FastAPI dashboard
+Every AI agent today shares the same three problems:
 
-## Deferred By Design
+1. **Every API call burns money** — even trivial requests hit expensive cloud models
+2. **Learns nothing between runs** — the same question costs the same amount every time
+3. **Operates as a black box** — no audit trail, no cost attribution, no permission boundaries
 
-- Browser automation
-- Authenticated browser/session management implementation
-- Distributed rate limiting and multi-node coordination
-- Container-level sandbox isolation
+NEXUS-R solves all three with a modular, event-driven architecture built for transparency and efficiency.
 
-## Cost Dashboard
+---
 
-The dashboard exposes cost summaries, task history, audit log search, ETD cache statistics, and real-time updates over WebSocket.
+## Key Features
 
-### Quick Start
+| Capability | What it does |
+|---|---|
+| **Offline-first routing** | Runs local Ollama models by default; escalates to cloud only when task complexity exceeds a threshold |
+| **10 cloud providers** | Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, NVIDIA NIM, Together AI, LocalAI, OpenCode, or bring your own key |
+| **Experience Trace Distillation** | Caches successful execution patterns — repeat tasks skip the LLM call entirely, cutting latency by 60–80% |
+| **Append-only EventStore** | Every action, cost, and decision is logged to SQLite — fully auditable, no data ever overwritten |
+| **Live dashboard** | Real-time WebSocket updates, chat interface, model switching, download orchestration — all in the browser |
+| **Semantic memory** | Embedding-based episodic memory (offline, using Ollama) — remembers user preferences across sessions |
+| **Permission enforcer** | Tier-based approval system with risk classification and prompt injection defense |
+| **Browser automation** | Headless Playwright integration for web navigation, form filling, and JS evaluation |
+| **Desktop app** | Electron-based native client for seamless local experience |
+
+---
+
+## Architecture
+
+```
+User Input → Input Gateway → Cognition Router → Execution Sandbox
+                │                  │                    │
+                │            ┌─────┴─────┐         ┌────┴────┐
+                │            │           │         │         │
+           Intent Parser  Local Model  Cloud API  Terminal  Browser
+           Memory Parser  (Ollama)     (BYOK)     Sandbox   (Playwright)
+                │            │           │              │
+                └────────────┴───────────┴──────────────┘
+                              │
+                         State Core
+                    ┌───────┴───────┐
+                    │               │
+              EventStore       Memory Engine
+              (SQLite)        (Embeddings)
+
+Workflow Engine (ETD) ⇄ Trust Layer (Permissions + Cost) ⇄ Web UI Dashboard
+```
+
+**53 Python modules** across 11 subsystems:
+
+| Module | Role |
+|---|---|
+| `foundation/` | Core config, events, telemetry, model registry |
+| `input_gateway/` | Intent classification, parameter extraction, memory commands |
+| `cognition_router/` | Capability profiling, parallel probing, model lifecycle |
+| `trust_layer/` | Permission enforcement, cost tracking, secret registry |
+| `state_core/` | Semantic memory, behavior tracking, identity, working state |
+| `workflow_engine/` | ETD cache: distiller, generalizer, indexer, retriever |
+| `execution_sandbox/` | Sandboxed terminal, browser automation, calculator, forecaster |
+| `session_manager/` | Session lifecycle |
+| `orchestrator/` | Top-level workflow orchestration |
+| `web_ui/` | FastAPI dashboard, chat handler, launcher, preference engine |
+| `cli/` | Typer-based command-line interface |
+
+---
+
+## Dashboard
+
+A real-time browser interface served by FastAPI:
+
+| Tab | Purpose |
+|---|---|
+| **Chat** | Conversational interface — streams responses live via WebSocket |
+| **History** | Browse past conversations with cost and latency metadata |
+| **Audit Log** | Searchable, paginated log of every action with cost breakdown |
+| **ETD Cache** | Cache hit rates, success rates, average cost savings |
+| **Models** | Configure local models, cloud providers, API keys, download models with live progress |
+
+**One command to start:**
 
 ```bash
-pip install fastapi uvicorn
-$env:NEXUS_DASHBOARD_TOKEN="your-token"
-python -m uvicorn modules.web_ui.src.app:create_app --factory --host 0.0.0.0 --port 8400
+nexus dashboard start
+# Opens http://localhost:8000?token=<auto-generated>
 ```
 
-Open `http://localhost:8400?token=your-token`.
-
-### API Surface
-
-| Endpoint | Description |
-|---|---|
-| `GET /api/v1/cost/summary` | Total spend, per-tier, per-model breakdown |
-| `GET /api/v1/cost/tasks` | Paginated task list with filters |
-| `GET /api/v1/cost/task/{id}` | Single task with per-step cost |
-| `GET /api/v1/cost/session/{id}` | Session aggregate |
-| `GET /api/v1/cost/tiers` | Cost by permission tier |
-| `GET /api/v1/cost/models` | Cost by model |
-| `GET /api/v1/etd` | ETD cache statistics |
-| `GET /api/v1/audit/log` | Searchable, paginated audit log |
-| `WS /ws/v1/cost/live` | Real-time cost updates |
-
-### Runtime Shape
-
-```text
-Browser <-> FastAPI (port 8400) <-> EventStore (SQLite)
-             |
-             +-> WebSocket (ws://host:8400/ws/v1/cost/live)
-             |
-             +-> Runtime CostTracker (push)
+Windows fallback:
+```bash
+python scripts/start_dashboard.py
 ```
 
-## Validation Highlights
+---
 
-- Phase 2 validation summary: [`docs/phase2_validation_summary.md`](docs/phase2_validation_summary.md)
-- Cost dashboard deployment guide: [`docs/cost_dashboard_deployment.md`](docs/cost_dashboard_deployment.md)
-- EventStore scaling report: [`docs/eventstore_scaling_report.md`](docs/eventstore_scaling_report.md)
-- Provider failure report: [`docs/provider_failure_report.md`](docs/provider_failure_report.md)
-- Recovery guide for local test environments: [`docs/test_environment_recovery.md`](docs/test_environment_recovery.md)
+## Quick Start
+
+```bash
+# Install
+pip install nexus-r
+
+# Start the dashboard
+nexus dashboard start
+
+# Or programmatically
+from nexus_r.config import NEXUSConfig
+from modules.web_ui.src.app import create_app
+config = NEXUSConfig.from_env("./workspace")
+app = create_app(...)
+```
+
+**Prerequisites:** Python 3.11+, Ollama (for local models), optionally a cloud API key.
+
+---
+
+## Status
+
+**Phase 3** — Production-ready dashboard and model orchestration.
+
+- 53 Python modules across 11 subsystems
+- 137+ passing tests (unit, integration, security)
+- Full download lifecycle management with progress tracking and cancel/resume
+- Semantic memory with offline embedding-based retrieval
+- 10 cloud providers with format validation and error classification
+
+### Roadmap
+
+- Distributed rate limiting and multi-node coordination
+- Docker container-level sandbox isolation
+- Authenticated browser session management
+- Plugin system for third-party tools and providers
+
+---
+
+## License
+
+MIT — free for personal and commercial use.
+
+---
+
+## Validation & Reports
+
+- [Phase 2 Validation Summary](docs/phase2_validation_summary.md)
+- [Cost Dashboard Deployment Guide](docs/cost_dashboard_deployment.md)
+- [EventStore Scaling Report](docs/eventstore_scaling_report.md)
+- [Provider Failure Report](docs/provider_failure_report.md)
+- [Recovery Guide](docs/test_environment_recovery.md)
+- [Phase 2 Stabilization Report](docs/phase2_stabilization_change_report.md)
+- [Phase 2 Stabilization Handoff](docs/phase2_stabilization_handoff.md)

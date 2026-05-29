@@ -19,3 +19,18 @@ build/
 test.txt
 .test-tmp/
 execution plan with prompts.pdf
+
+# Secrets and build artifacts
+.nexus_token
+*.egg-info/
+desktop-app/
+
+# Scratch scripts
+patch_*.py
+verify_*.py
+test_chat.py
+test_routing_pipeline.py
+run_tests.py
+Modelfile
+test.json.txt
+.gitkeep

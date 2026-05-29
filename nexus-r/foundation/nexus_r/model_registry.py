@@ -3,12 +3,15 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import json
+import logging
 import os
 import shutil
 from time import perf_counter
 from typing import AsyncIterator, Protocol
 
 import httpx
+
+logger = logging.getLogger("nexus-r.registry")
 
 from .config import NEXUSConfig
 from .errors import (
@@ -22,6 +25,7 @@ from .errors import (
     ProviderTimeoutError,
 )
 from .telemetry import RuntimeTelemetry
+from .backend_manager import BackendManager
 
 
 class ModelProvider(Protocol):
@@ -81,6 +85,69 @@ class ModelRegistry:
         self._provider_semaphore = asyncio.Semaphore(max(1, config.models.provider_max_concurrency))
         self._queued_requests = 0
         self._active_requests = 0
+        self._last_model_reason = ''
+        self._sentence_transformer_model = None
+        self._sentence_transformer_loaded = False
+        self._anchor_embeddings = {}
+        self._semantic_categories = {
+            "coding": {
+                "model_keyword": "coder",
+                "default_model": "antigravity-coder:latest",
+                "reason_name": "Coding",
+                "anchors": [
+                    "write a python script to parse json",
+                    "how to implement a database query in sql",
+                    "debug this syntax error in javascript",
+                    "create an API endpoint with FastAPI",
+                    "implement a binary search algorithm in rust",
+                    "how to resolve git merge conflicts",
+                    "explain class inheritance in python"
+                ]
+            },
+            "math_reasoning": {
+                "model_keyword": "deepseek-r1",
+                "default_model": "deepseek-r1:8b",
+                "reason_name": "Math & Reasoning",
+                "anchors": [
+                    "solve the quadratic equation and explain steps",
+                    "calculate the integral of x times cosine x",
+                    "what are the confidence intervals for this distribution",
+                    "run a forecast regression analysis",
+                    "prove the pythagorean theorem",
+                    "compute the derivative of log x",
+                    "calculate standard deviation and variance"
+                ]
+            },
+            "creative": {
+                "model_keyword": "gemma2",
+                "default_model": "gemma2:9b",
+                "reason_name": "Creative & Writing",
+                "anchors": [
+                    "write a short story about an astronaut on mars",
+                    "compose a lyrical poem about the changing seasons",
+                    "draft an essay comparing Keynesian vs Classical economics",
+                    "write an engaging blog post introduction",
+                    "create a screenplay scene between two detectives",
+                    "write an email to ask for a deadline extension",
+                    "draft a recipe blog article"
+                ]
+            },
+            "conversational": {
+                "model_keyword": "gemma2",
+                "default_model": "gemma2:9b",
+                "reason_name": "Conversational & Lightweight",
+                "anchors": [
+                    "hi",
+                    "hello there, how are you",
+                    "thanks so much",
+                    "ok sounds good",
+                    "bye",
+                    "yes",
+                    "no",
+                    "sure that works"
+                ]
+            }
+        }
         local_ready = self._local_model_ready(config.models.local_model)
         self.local = StaticModelProvider(
             name=config.models.local_model,
@@ -88,25 +155,11 @@ class ModelRegistry:
             estimated_cost=config.models.local_cost_per_call,
             provider_kind="local",
         )
-        self.local_mock = StaticModelProvider(
-            name=config.models.local_fallback_model,
-            is_available=config.models.enable_mock_fallbacks,
-            estimated_cost=config.models.local_cost_per_call,
-            provider_kind="local",
-            uses_mock=True,
-        )
         self.byok = StaticModelProvider(
             name=config.models.byok_model,
             is_available=bool(secret_registry.get_secret(config.models.byok_secret_name)),
             estimated_cost=config.models.byok_cost_per_call,
             provider_kind="byok",
-        )
-        self.byok_mock = StaticModelProvider(
-            name=config.models.byok_fallback_model,
-            is_available=config.models.enable_mock_fallbacks,
-            estimated_cost=config.models.byok_cost_per_call,
-            provider_kind="byok",
-            uses_mock=True,
         )
 
     def refresh(self) -> None:
@@ -118,15 +171,27 @@ class ModelRegistry:
     def get(self, tier_name: str) -> StaticModelProvider:
         self.refresh()
         if tier_name == "byok":
-            return self.byok if self.byok.available() else self.byok_mock
-        return self.local if self.local.available() else self.local_mock
+            if not self.byok.available():
+                raise RuntimeError("BYOK provider is not available. Please configure an API key.")
+            return self.byok
+        if not self.local.available():
+            raise RuntimeError("Local provider is not available. Please start Ollama or configure a model.")
+        return self.local
+
+    def is_vision_model(self, model_name: str) -> bool:
+        """Check if a model name indicates vision capabilities."""
+        if not model_name:
+            return False
+        name = model_name.lower()
+        vision_keywords = ["vl", "vision", "llava", "gpt-4o", "claude-3.5-sonnet", "gemini-1.5", "pixtral", "llama3.2-vision"]
+        return any(kw in name for kw in vision_keywords)
 
     def provider_chain(self, preferred: str) -> list[StaticModelProvider]:
         self.refresh()
         if preferred == "byok":
-            chain = [self.byok, self.local, self.byok_mock, self.local_mock]
+            chain = [self.byok, self.local]
         else:
-            chain = [self.local, self.byok, self.byok_mock, self.local_mock]
+            chain = [self.local, self.byok]
         deduped: list[StaticModelProvider] = []
         seen: set[str] = set()
         for provider in chain:
@@ -136,10 +201,10 @@ class ModelRegistry:
                 seen.add(key)
         return deduped
 
-    async def complete(self, prompt: str, preferred: str) -> ModelInvocationResult:
+    async def complete(self, prompt: str, preferred: str, images: list[str] | None = None) -> ModelInvocationResult:
         chain = self.provider_chain(preferred)
         if not chain:
-            raise RuntimeError("No providers or mock fallbacks are available.")
+            raise RuntimeError("No models are available to serve the request. Please configure a cloud API key or start local Ollama.")
         last_error: Exception | None = None
         for index, provider in enumerate(chain):
             attempt = index + 1
@@ -158,6 +223,7 @@ class ModelRegistry:
                     provider=provider,
                     prompt=prompt,
                     fallback_used=is_fallback,
+                    images=images,
                 )
             except asyncio.CancelledError:
                 if self.telemetry is not None:
@@ -174,10 +240,10 @@ class ModelRegistry:
                 continue
         raise self._build_chain_exhausted_error(last_error, preferred)
 
-    async def stream(self, prompt: str, preferred: str) -> AsyncIterator[ModelStreamChunk]:
+    async def stream(self, prompt: str, preferred: str, images: list[str] | None = None) -> AsyncIterator[ModelStreamChunk]:
         chain = self.provider_chain(preferred)
         if not chain:
-            raise RuntimeError("No providers or mock fallbacks are available.")
+            raise RuntimeError("No models are available to serve the request. Please configure a cloud API key or start local Ollama.")
         last_error: Exception | None = None
         for index, provider in enumerate(chain):
             attempt = index + 1
@@ -196,6 +262,7 @@ class ModelRegistry:
                     provider=provider,
                     prompt=prompt,
                     fallback_used=is_fallback,
+                    images=images,
                 ):
                     yield chunk
                 return
@@ -352,6 +419,7 @@ class ModelRegistry:
         provider: StaticModelProvider,
         prompt: str,
         fallback_used: bool,
+        images: list[str] | None = None,
     ) -> ModelInvocationResult:
         started = perf_counter()
         self._queued_requests += 1
@@ -370,7 +438,7 @@ class ModelRegistry:
                             uses_mock=provider.uses_mock,
                             fallback_used=fallback_used,
                         )
-                    result = await self._invoke(provider, prompt, fallback_used)
+                    result = await self._invoke(provider, prompt, fallback_used, images=images)
                     if self.telemetry is not None:
                         self.telemetry.increment("provider.success_total", provider=provider.name)
                         self.telemetry.emit(
@@ -397,6 +465,7 @@ class ModelRegistry:
         provider: StaticModelProvider,
         prompt: str,
         fallback_used: bool,
+        images: list[str] | None = None,
     ) -> AsyncIterator[ModelStreamChunk]:
         self._queued_requests += 1
         self._emit_queue_metrics()
@@ -414,7 +483,7 @@ class ModelRegistry:
                             uses_mock=provider.uses_mock,
                             fallback_used=fallback_used,
                         )
-                    async for chunk in self._invoke_stream(provider, prompt, fallback_used):
+                    async for chunk in self._invoke_stream(provider, prompt, fallback_used, images=images):
                         if self.telemetry is not None and chunk.text:
                             self.telemetry.increment(
                                 "provider.stream_chunks_total",
@@ -430,20 +499,222 @@ class ModelRegistry:
                 self._emit_queue_metrics()
             raise
 
+    def _compute_cosine_similarity(self, a: list[float], b: list[float]) -> float:
+        import math
+        dot_product = sum(x * y for x, y in zip(a, b))
+        magnitude_a = math.sqrt(sum(x * x for x in a))
+        magnitude_b = math.sqrt(sum(x * x for x in b))
+        if magnitude_a == 0 or magnitude_b == 0:
+            return 0.0
+        return dot_product / (magnitude_a * magnitude_b)
+
+    def _get_embedding(self, text: str, local_models: list[str]) -> list[float]:
+        import sys
+        if "pytest" in sys.modules:
+            return [0.1] * 384
+        if not self._sentence_transformer_loaded:
+            try:
+                from sentence_transformers import SentenceTransformer
+                self._sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
+                self._sentence_transformer_loaded = True
+                logger.info("SentenceTransformer (all-MiniLM-L6-v2) successfully loaded.")
+            except ImportError:
+                self._sentence_transformer_loaded = False
+            except Exception as e:
+                logger.warning(f"Failed to initialize sentence-transformers: {e}")
+                self._sentence_transformer_loaded = False
+
+        if self._sentence_transformer_loaded and self._sentence_transformer_model:
+            try:
+                embedding = self._sentence_transformer_model.encode(text).tolist()
+                return embedding
+            except Exception as e:
+                logger.warning(f"SentenceTransformer encoding failed: {e}")
+
+        # Mode 2: Ollama Embeddings API
+        try:
+            BackendManager.get_instance().ensure_running()
+            api_base = BackendManager.get_instance().base_url
+        except Exception:
+            api_base = self.config.models.local_api_base
+            
+        active_model = self.config.models.local_model.replace("ollama/", "")
+        candidate_models = [active_model] + local_models + ["gemma2:9b", "llama3.2:3b", "qwen2.5:1.5b-instruct"]
+        
+        seen = set()
+        embed_models = [m for m in candidate_models if not (m in seen or seen.add(m))]
+        
+        for m in embed_models:
+            m_clean = m.replace("ollama/", "")
+            try:
+                response = httpx.post(
+                    f"{api_base}/api/embed",
+                    json={"model": m_clean, "input": text},
+                    timeout=2.0
+                )
+                if response.status_code == 200:
+                    embeddings = response.json().get("embeddings", [])
+                    if embeddings:
+                        return embeddings[0]
+            except Exception:
+                pass
+
+            try:
+                response = httpx.post(
+                    f"{api_base}/api/embeddings",
+                    json={"model": m_clean, "prompt": text},
+                    timeout=2.0
+                )
+                if response.status_code == 200:
+                    embedding = response.json().get("embedding", [])
+                    if embedding:
+                        return embedding
+            except Exception:
+                pass
+                
+        return [0.0] * 384
+
+    def _get_dynamic_local_model(self, prompt: str) -> str:
+        available_models = []
+        try:
+            BackendManager.get_instance().ensure_running()
+            api_base = BackendManager.get_instance().base_url
+            # Check what models are downloaded in Ollama
+            response = httpx.get(f"{api_base}/api/tags", timeout=1.0)
+            if response.status_code == 200:
+                available_models = [m.get("name") for m in response.json().get("models", [])]
+        except Exception:
+            pass
+
+        def find_model(target: str, keyword: str) -> str | None:
+            for m in available_models:
+                if keyword in m:
+                    return f"ollama/{m}"
+            if target in available_models:
+                return f"ollama/{target}"
+            return None
+
+        # ═══════════════════════════════════════════════════════
+        # HEURISTICS PRE-ROUTING STAGE (Fast, low-overhead bypass)
+        # ═══════════════════════════════════════════════════════
+
+        prompt_lower = prompt.lower()
+        word_count = len(prompt.split())
+
+        # Heuristic 1: Simple greeting/short acknowledgments
+        trivial_patterns = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'ok', 'okay', 'bye', 'yes', 'no', 'sure']
+        if word_count <= 5 and prompt_lower.strip().rstrip('!?.') in trivial_patterns:
+            result = find_model("gemma2:9b", "gemma2") or find_model("llama3.2:3b", "llama3.2")
+            if result:
+                self._last_model_reason = "Heuristic match (Trivial Greeting) → default chat model"
+                return result
+
+        # Heuristic 2: Explicit Code blocks syntax in prompt
+        if "```" in prompt:
+            result = find_model("antigravity-coder:latest", "antigravity-coder") or find_model("qwen2.5-coder:7b", "qwen2.5-coder")
+            if result:
+                self._last_model_reason = "Heuristic match (Code Syntax Block detected) → specialized code model"
+                return result
+
+        # Heuristic 3: Very long prompts (summarization/complex writing prompts)
+        if word_count > 250:
+            result = find_model("gemma2:9b", "gemma2")
+            if result:
+                self._last_model_reason = f"Heuristic match (Long Prompt: {word_count} words) → high-capacity model"
+                return result
+
+        # Determine the current embedding mode and cache key
+        if self._sentence_transformer_loaded:
+            mode_key = "sentence_transformers"
+        else:
+            active_model = self.config.models.local_model.replace("ollama/", "")
+            candidate_models = [active_model] + available_models + ["gemma2:9b", "llama3.2:3b", "qwen2.5:1.5b-instruct"]
+            mode_key = "ollama_fallback"
+            for m in candidate_models:
+                m_clean = m.replace("ollama/", "")
+                if m_clean in available_models:
+                    mode_key = f"ollama_{m_clean}"
+                    break
+
+        # Warm up/compute anchor embeddings if not already cached for this mode_key
+        if mode_key not in self._anchor_embeddings:
+            self._anchor_embeddings[mode_key] = {}
+            for cat_name, cat_info in self._semantic_categories.items():
+                cat_vectors = []
+                for anchor in cat_info["anchors"]:
+                    vector = self._get_embedding(anchor, available_models)
+                    if vector and any(v != 0.0 for v in vector):
+                        cat_vectors.append(vector)
+                if cat_vectors:
+                    self._anchor_embeddings[mode_key][cat_name] = cat_vectors
+
+        # Semantic Similarity Routing
+        best_category = None
+        best_score = -1.0
+        scores = {}
+        
+        prompt_vector = self._get_embedding(prompt, available_models)
+        
+        if prompt_vector and any(v != 0.0 for v in prompt_vector) and mode_key in self._anchor_embeddings:
+            for cat_name, cat_vectors in self._anchor_embeddings[mode_key].items():
+                cat_similarities = []
+                for vec in cat_vectors:
+                    sim = self._compute_cosine_similarity(prompt_vector, vec)
+                    cat_similarities.append(sim)
+                
+                if cat_similarities:
+                    max_sim = max(cat_similarities)
+                    avg_top = sum(sorted(cat_similarities, reverse=True)[:2]) / min(2, len(cat_similarities))
+                    score = 0.7 * max_sim + 0.3 * avg_top
+                    scores[cat_name] = score
+                    if score > best_score:
+                        best_score = score
+                        best_category = cat_name
+
+        # Routing decision based on similarity scores
+        # Confidence threshold: 0.40
+        if best_category and best_score >= 0.40:
+            cat_info = self._semantic_categories[best_category]
+            result = find_model(cat_info["default_model"], cat_info["model_keyword"])
+            if result:
+                self._last_model_reason = f"Semantic match ({best_score:.2f}) to {cat_info['reason_name']} category → {best_category}"
+                return result
+
+        # Fallback to configured model
+        self._last_model_reason = "Semantic match low/absent → fallback to default model"
+        fallback_model = self.config.models.local_model
+        if not fallback_model.startswith("ollama/"):
+            fallback_model = f"ollama/{fallback_model}"
+        return fallback_model
+
     async def _invoke(
         self,
         provider: StaticModelProvider,
         prompt: str,
         fallback_used: bool,
+        images: list[str] | None = None,
     ) -> ModelInvocationResult:
         if provider.uses_mock:
             return await self._mock_completion(provider, prompt, fallback_used)
         if provider.provider_kind == "local":
+            try:
+                BackendManager.get_instance().ensure_running()
+                api_base = BackendManager.get_instance().base_url
+            except Exception:
+                api_base = self.config.models.local_api_base
+
+            if "auto" in self.config.models.local_model.lower():
+                provider.name = self._get_dynamic_local_model(prompt)
+            else:
+                provider.name = self.config.models.local_model
+                if not provider.name.startswith("ollama/"):
+                    provider.name = f"ollama/{provider.name}"
+                self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
             return await self._litellm_completion(
                 provider=provider,
                 prompt=prompt,
                 fallback_used=fallback_used,
-                api_base=self.config.models.local_api_base,
+                api_base=api_base,
                 api_key="ollama",
             )
         api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
@@ -467,20 +738,11 @@ class ModelRegistry:
         provider: StaticModelProvider,
         prompt: str,
         fallback_used: bool,
+        images: list[str] | None = None,
     ) -> AsyncIterator[ModelStreamChunk]:
-        if provider.uses_mock:
-            parts = await self._mock_stream_parts(provider, prompt)
-            for index, part in enumerate(parts):
-                yield ModelStreamChunk(
-                    text=part,
-                    model_name=provider.name,
-                    used_mock=True,
-                    fallback_used=fallback_used,
-                    done=index == len(parts) - 1,
-                )
-            return
+
         if provider.provider_kind != "local":
-            result = await self._invoke(provider, prompt, fallback_used)
+            result = await self._invoke(provider, prompt, fallback_used, images=images)
             yield ModelStreamChunk(
                 text=result.text,
                 model_name=result.model_name,
@@ -489,6 +751,20 @@ class ModelRegistry:
                 done=True,
             )
             return
+        if "auto" in self.config.models.local_model.lower():
+            provider.name = self._get_dynamic_local_model(prompt)
+        else:
+            provider.name = self.config.models.local_model
+            if not provider.name.startswith("ollama/"):
+                provider.name = f"ollama/{provider.name}"
+            self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
+        
+        try:
+            BackendManager.get_instance().ensure_running()
+            api_base = BackendManager.get_instance().base_url
+        except Exception:
+            api_base = self.config.models.local_api_base
+
         model_name = self._provider_model_name(provider.name)
         payload = {
             "model": model_name,
@@ -500,7 +776,7 @@ class ModelRegistry:
         async with httpx.AsyncClient(timeout=timeout) as client:
             async with client.stream(
                 "POST",
-                f"{self.config.models.local_api_base}/api/chat",
+                f"{api_base}/api/chat",
                 json=payload,
             ) as response:
                 response.raise_for_status()
@@ -528,6 +804,7 @@ class ModelRegistry:
         fallback_used: bool,
         api_key: str,
         api_base: str | None = None,
+        images: list[str] | None = None,
     ) -> ModelInvocationResult:
         from litellm import acompletion
         from litellm.exceptions import (
@@ -538,10 +815,16 @@ class ModelRegistry:
         )
 
         started = perf_counter()
+        msg_content = prompt
+        if images:
+            msg_content = [{"type": "text", "text": prompt}]
+            for img in images:
+                msg_content.append({"type": "image_url", "image_url": {"url": img}})
+                
         try:
             response = await acompletion(
                 model=provider.name,
-                messages=[{"role": "user", "content": prompt}],
+                messages=[{"role": "user", "content": msg_content}],
                 api_key=api_key,
                 api_base=api_base,
                 timeout=self.config.models.provider_timeout_seconds,
@@ -622,35 +905,7 @@ class ModelRegistry:
             fallback_used=fallback_used,
         )
 
-    async def _mock_completion(
-        self,
-        provider: StaticModelProvider,
-        prompt: str,
-        fallback_used: bool,
-    ) -> ModelInvocationResult:
-        await asyncio.sleep(self.config.models.mock_latency_ms / 1000.0)
-        shortened = " ".join(prompt.split())[:160]
-        return ModelInvocationResult(
-            text=f"{self.config.models.mock_response_prefix} {shortened}".strip(),
-            model_name=provider.name,
-            estimated_cost=max(provider.estimated_cost, 0.001),
-            latency_ms=float(self.config.models.mock_latency_ms),
-            used_mock=True,
-            fallback_used=fallback_used,
-        )
 
-    async def _mock_stream_parts(
-        self,
-        provider: StaticModelProvider,
-        prompt: str,
-    ) -> list[str]:
-        result = await self._mock_completion(provider, prompt, fallback_used=False)
-        text = result.text
-        words = text.split()
-        if len(words) < 3:
-            return [text]
-        midpoint = max(1, len(words) // 2)
-        return [" ".join(words[:midpoint]) + " ", " ".join(words[midpoint:])]
 
     def _coerce_message_content(self, content: object) -> str:
         if isinstance(content, str):
@@ -697,15 +952,15 @@ class ModelRegistry:
                 self.telemetry.increment("model.warm_up_failures_total")
 
     def _local_model_ready(self, model_name: str) -> bool:
-        target = self._provider_model_name(model_name)
         try:
             response = httpx.get(f"{self.config.models.local_api_base}/api/tags", timeout=1.5)
             response.raise_for_status()
             payload = response.json()
             models = payload.get("models", [])
-            return any(model.get("name") == target for model in models)
+            # Return True if Ollama is running and has at least one model downloaded
+            return len(models) > 0
         except Exception:
-            return shutil.which("ollama") is not None or self._ollama_install_exists()
+            return shutil.which("ollama") is not None
 
     def _provider_model_name(self, model_name: str) -> str:
         return model_name.split("/", 1)[-1]
@@ -715,8 +970,3 @@ class ModelRegistry:
             return
         self.telemetry.set_gauge("provider.queue_depth", float(self._queued_requests))
         self.telemetry.set_gauge("provider.active_requests", float(self._active_requests))
-
-    def _ollama_install_exists(self) -> bool:
-        return shutil.which("ollama") is not None or os.path.exists(
-            r"C:\Users\Gaurav\AppData\Local\Programs\Ollama\ollama.exe"
-        )

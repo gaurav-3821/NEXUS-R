@@ -46,3 +46,66 @@ tr:hover { background: #1c2128; }
 .recent-tasks h3 { font-size: 14px; margin-bottom: 12px; color: #8b949e; }
 .live-badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #1a5c2e; color: #7ee787; margin-left: 8px; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
+/* --- Settings Modal --- */
+.settings-modal-card {
+  background: var(--panel-bg);
+  width: 90vw;
+  max-width: 1200px;
+  height: 90vh;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+.settings-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-color);
+  background: #1a1a1a;
+}
+.settings-modal-header h3 { margin: 0; font-size: 18px; color: #ececec; }
+.settings-modal-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.settings-sidebar-nav {
+  width: 240px;
+  background: #1e1e1e;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 0;
+}
+.settings-tab {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  padding: 12px 24px;
+  text-align: left;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.settings-tab:hover {
+  background: rgba(255,255,255,0.05);
+  color: #ececec;
+}
+.settings-tab.active {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  border-left: 3px solid #58a6ff;
+}
+.settings-content-area {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+  background: #141414;
+}
+.settings-tab-content { display: none; }
+.settings-tab-content.active { display: block; }

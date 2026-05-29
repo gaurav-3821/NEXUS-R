@@ -14,9 +14,12 @@ if str(ROOT) not in sys.path:
 
 from nexus_r.config import NEXUSConfig
 from modules.orchestrator.src.orchestrator import MainOrchestrator
+from modules.web_ui.src.launcher import DashboardLauncherError, start_dashboard_server
 
 
 app = typer.Typer(help="NEXUS-R Phase 1 CLI")
+dashboard_app = typer.Typer(help="Dashboard commands.")
+app.add_typer(dashboard_app, name="dashboard")
 
 
 def build_orchestrator(workspace: str) -> MainOrchestrator:
@@ -71,6 +74,20 @@ def cost(workspace: str = typer.Option(str(ROOT), help="Workspace root.")) -> No
 def config(workspace: str = typer.Option(str(ROOT), help="Workspace root.")) -> None:
     orchestrator = build_orchestrator(workspace)
     print(json.dumps(orchestrator.get_config(), indent=2, default=str))
+
+
+@dashboard_app.command("start")
+def dashboard_start(
+    workspace: str = typer.Option(str(ROOT), help="Workspace root."),
+    host: str = typer.Option("127.0.0.1", help="Host interface to bind."),
+    port: int = typer.Option(8000, help="Preferred starting port."),
+    token: str | None = typer.Option(None, help="Dashboard auth token. Defaults to NEXUS_DASHBOARD_TOKEN."),
+) -> None:
+    try:
+        start_dashboard_server(workspace, host=host, start_port=port, token=token)
+    except DashboardLauncherError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
 
 
 def main() -> None:

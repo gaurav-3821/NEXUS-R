@@ -39,7 +39,24 @@ def pytest_configure(config: pytest.Config) -> None:
     os.environ.setdefault("TMPDIR", str(TEST_TMP))
 
 
+def pytest_sessionstart(session: pytest.Session) -> None:
+    from foundation.nexus_r.backend_manager import BackendManager
+    # Try to start it, but don't fail the whole test suite if ollama is missing
+    # in some CI environments, although the requirement says we should start it.
+    try:
+        mgr = BackendManager(test_mode=True)
+        mgr.start(wait_ready=True)
+        BackendManager.set_instance(mgr)
+    except Exception as e:
+        import logging
+        logging.warning(f"Could not start test BackendManager: {e}")
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    from foundation.nexus_r.backend_manager import BackendManager
+    try:
+        BackendManager.get_instance().stop()
+    except Exception:
+        pass
     _force_remove(TEST_TMP)
 
 
@@ -61,3 +78,27 @@ async def warmup_orchestrator(workspace) -> None:
     await orch.initialize()
     await orch.run_task("list files")
     await orch.close()
+
+
+@pytest.fixture(autouse=True)
+def mock_litellm_acompletion():
+    from unittest.mock import AsyncMock, patch
+
+    class MockMessage:
+        def __init__(self, content):
+            self.content = content
+
+    class MockChoice:
+        def __init__(self, content):
+            self.message = MockMessage(content)
+
+    class MockResponse:
+        def __init__(self, content):
+            self.choices = [MockChoice(content)]
+            self.usage = None
+
+    async_mock = AsyncMock(return_value=MockResponse("Mock model response content."))
+
+    with patch("litellm.acompletion", async_mock):
+        yield async_mock
+

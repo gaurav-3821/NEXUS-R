@@ -248,6 +248,52 @@ class TestDashboardEdgeCases:
         os.environ.pop("NEXUS_DASHBOARD_TOKEN", None)
 
 
+class TestDashboardChatSecurity:
+    def test_chat_endpoints_require_auth(self, client):
+        endpoints = [
+            ("POST", "/api/v1/chat?message=hello"),
+            ("GET", "/api/v1/chat/conversations"),
+            ("GET", "/api/v1/chat/history"),
+            ("GET", "/api/v1/chat/message/msg_001"),
+        ]
+        for method, url in endpoints:
+            if method == "POST":
+                resp = client.post(url)
+            else:
+                resp = client.get(url)
+            assert resp.status_code == 401, f"{method} {url} should require auth, got {resp.status_code}"
+
+    def test_chat_handler_unavailable_returns_501(self, client):
+        resp = client.post("/api/v1/chat?token=secure-token-789&message=test")
+        assert resp.status_code == 501
+        assert "Chat handler not available" in resp.json()["detail"]
+
+    def test_chat_handler_unavailable_returns_501_get(self, client):
+        resp = client.get("/api/v1/chat/conversations?token=secure-token-789")
+        assert resp.status_code == 501
+
+    def test_chat_handler_unavailable_returns_501_history(self, client):
+        resp = client.get("/api/v1/chat/history?token=secure-token-789")
+        assert resp.status_code == 501
+
+    def test_chat_handler_unavailable_returns_501_message(self, client):
+        resp = client.get("/api/v1/chat/message/msg_001?token=secure-token-789")
+        assert resp.status_code == 501
+
+    def test_chat_send_empty_message_rejected_422(self, client):
+        resp = client.post("/api/v1/chat?token=secure-token-789&message=")
+        assert resp.status_code == 422
+
+    def test_chat_send_message_too_long_rejected_422(self, client):
+        long_msg = "x" * 10001
+        resp = client.post(f"/api/v1/chat?token=secure-token-789&message={long_msg}")
+        assert resp.status_code == 422
+
+    def test_chat_wrong_token_returns_403(self, client):
+        resp = client.post("/api/v1/chat?token=wrong-token&message=test")
+        assert resp.status_code == 403
+
+
 class TestDashboardEventSourcing:
     def test_all_dashboard_actions_logged(self, client, event_store):
         ct = None

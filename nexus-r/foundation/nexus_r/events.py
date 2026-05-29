@@ -67,6 +67,7 @@ class IntentResult(BaseModel):
     raw_input: str
     normalized_input: str
     task_type: str
+    images: list[str] | None = None
     complexity: float
     confidence: float
     parameters: dict[str, Any]

@@ -13,8 +13,40 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from nexus_r.events import Event, PermissionTier
+
+
+class DownloadRequest(BaseModel):
+    model_name: str
+
+
+class TestRequest(BaseModel):
+    local_model: str | None = None
+    cloud_provider: str | None = None
+    api_key: str | None = None
+
+
+class ConfigureRequest(BaseModel):
+    local_model: str | None = None
+    cloud_provider: str | None = None
+    api_key: str | None = None
+
+class ChatRequest(BaseModel):
+    message: str
+    model: str | None = None
+    conversation_id: str | None = None
+    images: list[str] | None = None
+
+class HITLResumeRequest(BaseModel):
+    message_id: str
+    code: str | None = None
+    solved: bool = False
+
+class TelemetryBatch(BaseModel):
+    signals: list[dict[str, Any]]
+    session_id: str | None = None
 
 logger = logging.getLogger("nexus-r.dashboard")
 
@@ -443,11 +475,13 @@ class CostWebSocketHandler:
 
 _ws_handler: CostWebSocketHandler | None = None
 _dashboard_service: CostDashboardService | None = None
+_chat_handler: Any = None
+_model_manager: Any = None
 _rate_limiter: dict[str, list[float]] = defaultdict(list)
 
 
-def create_app(event_store, etd_store=None) -> FastAPI:
-    global _ws_handler, _dashboard_service
+def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kwargs) -> FastAPI:
+    global _ws_handler, _dashboard_service, _chat_handler, _model_manager
     app = FastAPI(title="NEXUS-R Cost Dashboard", version="0.2.0")
 
     app.add_middleware(
@@ -461,9 +495,74 @@ def create_app(event_store, etd_store=None) -> FastAPI:
     _ws_handler = CostWebSocketHandler()
     _dashboard_service = CostDashboardService(event_store, etd_store)
 
+    # Resolve config, router, and secret_registry
+    cfg = config
+    router = None
+    secret_registry = None
+
+    if chat_handler is not None:
+        _chat_handler = chat_handler
+        router = getattr(_chat_handler, "router", None)
+        if router is not None:
+            cfg = getattr(router, "config", None)
+            models = getattr(router, "models", None)
+            if models is not None:
+                secret_registry = getattr(models, "secret_registry", None)
+    else:
+        # Initialize default ChatHandler if none provided
+        from modules.web_ui.src.chat_handler import ChatHandler
+        from modules.cognition_router.src.router import CognitionRouter
+        from modules.trust_layer.src.cost_tracker import CostTracker
+        from modules.trust_layer.src.permission_enforcer import PermissionEnforcer
+        from modules.trust_layer.src.secret_registry import SecretRegistry
+        from nexus_r.config import NEXUSConfig
+
+        cfg = config or NEXUSConfig.from_env(os.getcwd())
+        secret_registry = SecretRegistry(cfg.app_name)
+        secret_registry.bootstrap_from_environment(
+            cfg.models.byok_secret_name,
+            cfg.models.byok_api_key_env,
+        )
+
+        router = CognitionRouter(
+            cfg,
+            event_store,
+            secret_registry,
+        )
+        permission_enforcer = PermissionEnforcer()
+        cost_tracker = CostTracker(event_store)
+
+        _chat_handler = ChatHandler(
+            event_store=event_store,
+            cost_tracker=cost_tracker,
+            router=router,
+            ws_handler=_ws_handler,
+            perms=permission_enforcer,
+        )
+
+    if cfg is None:
+        from nexus_r.config import NEXUSConfig
+        cfg = NEXUSConfig.from_env(os.getcwd())
+
+    # Initialize ModelManager
+    from modules.cognition_router.src.model_manager import ModelManager
+
+    _model_manager = ModelManager(
+        config=cfg,
+        event_store=event_store,
+        router=router,
+        secret_registry=secret_registry,
+    )
+
     @app.on_event("startup")
     async def startup() -> None:
         await _dashboard_service.initialize()
+        if _model_manager is not None:
+            try:
+                _model_manager.apply_saved_config()
+                logger.info("Successfully loaded and applied model configuration on startup.")
+            except Exception as exc:
+                logger.warning("Failed to apply saved model configuration on startup: %s", exc)
         logger.info("Cost dashboard initialized on port 8400")
         logger.info("Dashboard UI: http://localhost:8400")
         logger.info("API docs: http://localhost:8400/docs")
@@ -484,6 +583,43 @@ def create_app(event_store, etd_store=None) -> FastAPI:
     async def dashboard_html(token: str = Query("")):
         _check_auth(token)
         return HTMLResponse(content=index_html(), status_code=200)
+
+    @app.post("/api/v1/telemetry")
+    async def receive_telemetry(batch: TelemetryBatch, token: str = Query("")):
+        _check_auth(token)
+        if _chat_handler:
+            for signal in batch.signals:
+                _chat_handler.behavior_tracker.record_signal(
+                    signal.get("type", "unknown"),
+                    signal.get("value")
+                )
+        return {"received": len(batch.signals)}
+
+    @app.get("/api/v1/memory")
+    async def get_memories(token: str = Query("")):
+        _check_auth(token)
+        if not _chat_handler or not hasattr(_chat_handler, "memory_engine"):
+            return {"memories": [], "stats": {}}
+            
+        memories = await _chat_handler.memory_engine.get_all_memories()
+        stats = await _chat_handler.memory_engine.get_stats()
+        return {"memories": memories, "stats": stats}
+        
+    @app.delete("/api/v1/memory/{memory_id}")
+    async def delete_memory(memory_id: str, token: str = Query("")):
+        _check_auth(token)
+        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
+            success = await _chat_handler.memory_engine.delete_memory(memory_id)
+            return {"success": success}
+        return {"success": False}
+        
+    @app.post("/api/v1/memory/clear")
+    async def clear_memories(token: str = Query("")):
+        _check_auth(token)
+        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
+            count = await _chat_handler.memory_engine.clear_all()
+            return {"success": True, "count": count}
+        return {"success": False}
 
     @app.get("/api/v1/cost/summary")
     async def get_summary(token: str = Query("")):
@@ -595,6 +731,224 @@ def create_app(event_store, etd_store=None) -> FastAPI:
             await websocket.close(code=1011, reason="CD-001: Dashboard not initialized")
             return
         await _ws_handler.handle(websocket)
+
+    @app.post("/api/v1/chat")
+    async def chat_send(
+        request: ChatRequest,
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        _check_rate_limit("chat")
+        if not request.message.strip():
+            raise HTTPException(status_code=422, detail="Message cannot be empty")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        return await _chat_handler.send_message(
+            message=request.message, 
+            model=request.model, 
+            conversation_id=request.conversation_id,
+            images=request.images
+        )
+
+    @app.post("/api/v1/chat/hitl-resume")
+    async def chat_hitl_resume(
+        request: HITLResumeRequest,
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.resume_hitl(
+            message_id=request.message_id,
+            code=request.code,
+            solved=request.solved
+        )
+        return {"success": success}
+
+    from fastapi import UploadFile, File
+    from .file_parser import extract_file_content
+    @app.post("/api/v1/files/extract")
+    async def files_extract(
+        token: str = Query(""),
+        file: UploadFile = File(...)
+    ):
+        _check_auth(token)
+        text = await extract_file_content(file)
+        return {"filename": file.filename, "text": text}
+
+    @app.get("/api/v1/chat/conversations")
+    async def chat_conversations(
+        token: str = Query(""),
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ):
+        _check_auth(token)
+        _check_rate_limit("conversations")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        return await _chat_handler.get_conversations(limit=limit, offset=offset)
+
+    @app.get("/api/v1/chat/history")
+    async def chat_history(
+        token: str = Query(""),
+        conversation_id: str | None = Query(None),
+        limit: int = Query(50, ge=1, le=200),
+        offset: int = Query(0, ge=0),
+    ):
+        _check_auth(token)
+        _check_rate_limit("history")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        return await _chat_handler.get_history(
+            conversation_id=conversation_id, limit=limit, offset=offset
+        )
+
+    @app.get("/api/v1/chat/message/{message_id}")
+    async def chat_message(
+        message_id: str,
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        _check_rate_limit("message")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        res = await _chat_handler.get_message(message_id)
+        if res is None:
+            raise HTTPException(status_code=404, detail="Message not found")
+        return res
+
+    @app.post("/api/v1/chat/interrupt")
+    async def chat_interrupt(
+        token: str = Query(""),
+        message_id: str = Query(...),
+    ):
+        _check_auth(token)
+        _check_rate_limit("interrupt")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.interrupt_message(message_id)
+        return {"success": success}
+
+    # --- Model Configuration and Management Endpoints ---
+
+    @app.get("/api/v1/models/status")
+    async def models_status(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_status")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        
+        cfg = _model_manager.config
+        api_key_configured = False
+        cloud_provider = "none"
+        local_model = cfg.models.local_model
+        
+        saved = _model_manager.load_saved_config()
+        if saved:
+            local_model = saved.get("local_model", local_model)
+            cloud_provider = saved.get("cloud_provider", "none")
+            if saved.get("api_key"):
+                api_key_configured = True
+        else:
+            from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+            byok_model = cfg.models.byok_model
+            for opt in CLOUD_PROVIDER_OPTIONS:
+                if opt["model"] == byok_model and opt["value"] != "none":
+                    cloud_provider = opt["value"]
+                    if os.environ.get(opt["env_var"]):
+                        api_key_configured = True
+                    break
+        
+        current = {
+            "local_model": local_model,
+            "cloud_provider": cloud_provider,
+            "api_key_configured": api_key_configured,
+        }
+        
+        from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+        return {
+            "current": current,
+            "cloud_options": CLOUD_PROVIDER_OPTIONS,
+        }
+
+    @app.get("/api/v1/models/list-local")
+    async def models_list_local(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_list_local")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        return await _model_manager.list_all_local_models()
+
+    @app.get("/api/v1/models/download-jobs")
+    async def models_download_jobs(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_download_jobs")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        jobs = _model_manager.get_active_jobs()
+        return {"jobs": jobs}
+
+    @app.get("/api/v1/models/download-status/{job_id}")
+    async def models_download_status(job_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_download_status")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        status = _model_manager.get_download_status(job_id)
+        if status is None:
+            raise HTTPException(status_code=404, detail="Download job not found")
+        return status
+
+    @app.get("/api/v1/models/ollama-status/{model_name:path}")
+    async def models_ollama_status(model_name: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_ollama_status")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        return await _model_manager.check_model_status(model_name)
+
+    @app.post("/api/v1/models/download")
+    async def models_download(req: DownloadRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_download")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        return _model_manager.start_download(req.model_name)
+
+    @app.post("/api/v1/models/download-cancel/{job_id}")
+    async def models_download_cancel(job_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_download_cancel")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        return _model_manager.cancel_download(job_id)
+
+    @app.post("/api/v1/models/test")
+    async def models_test(req: TestRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_test")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        
+        if req.local_model:
+            return await _model_manager.test_local_model(req.local_model)
+        elif req.cloud_provider:
+            return await _model_manager.test_cloud_connection(req.cloud_provider, req.api_key or "")
+        else:
+            raise HTTPException(status_code=422, detail="Either local_model or cloud_provider must be provided")
+
+    @app.post("/api/v1/models/configure")
+    async def models_configure(req: ConfigureRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_configure")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        
+        return await _model_manager.configure(
+            local_model=req.local_model,
+            cloud_provider=req.cloud_provider,
+            api_key=req.api_key,
+        )
 
     return app
 

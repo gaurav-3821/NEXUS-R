@@ -8,11 +8,23 @@ version = "0.1.0"
 description = "Phase 1 implementation of the NEXUS-R agent runtime"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.20",
+    "fastapi>=0.136",
+    "httpx>=0.28",
+    "keyring>=25.0",
+    "litellm>=1.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.0",
+    "typer>=0.12",
+    "uvicorn>=0.48",
+    "playwright>=1.40.0",
+    "python-multipart>=0.0.19",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
-runtime = ["keyring>=25.0", "litellm>=1.0"]
+runtime = ["keyring>=25.0", "litellm>=1.0", "sentence-transformers>=2.2.0"]
 
 [project.scripts]
 nexus = "modules.cli.src.main:main"

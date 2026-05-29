@@ -3,100 +3,271 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXUS-R Cost Dashboard</title>
+<title>NEXUS-R Chat</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header>
-  <h1>NEXUS-R Cost Dashboard</h1>
-  <div class="connection-status" id="connectionStatus">Disconnected</div>
-</header>
 
-<nav class="tabs">
-  <button class="tab active" data-tab="overview">Overview</button>
-  <button class="tab" data-tab="tasks">Tasks</button>
-  <button class="tab" data-tab="audit">Audit Log</button>
-  <button class="tab" data-tab="etd">ETD Cache</button>
-  <button class="tab" data-tab="models">Models</button>
-</nav>
-
-<main>
-  <section id="overview" class="tab-content active">
-    <div class="summary-cards" id="summaryCards">
-      <div class="card"><h3>Total Spend</h3><p class="big-number" id="totalCost">$0.00</p></div>
-      <div class="card"><h3>Tasks</h3><p class="big-number" id="taskCount">0</p></div>
-      <div class="card"><h3>Running Total</h3><p class="big-number" id="runningTotal">$0.00</p></div>
-    </div>
-    <div class="chart-row">
-      <div class="chart-card">
-        <h3>Cost by Tier</h3>
-        <div class="bar-chart" id="tierChart"></div>
+<main style="height: 100vh; padding: 0; margin: 0; max-width: 100%;">
+  <div class="chat-layout" id="chatLayout">
+    <!-- LEFT SIDEBAR -->
+    <div class="chat-sidebar" id="chatSidebar">
+      <div class="sidebar-header">
+        <h3>Conversations</h3>
+        <button class="toggle-btn" id="toggleLeftBtnClose" title="Close Sidebar">◀</button>
       </div>
-      <div class="chart-card">
-        <h3>Cost by Model</h3>
-        <div class="bar-chart" id="modelChart"></div>
+      <ul id="conversationList"></ul>
+      <button id="newChatBtn" class="new-chat-btn">+ New Chat</button>
+    </div>
+    
+    <!-- MAIN CHAT AREA -->
+    <div class="chat-main" id="chatMain">
+      <div class="chat-header">
+        <button class="toggle-btn collapsed-only" id="toggleLeftBtnOpen" style="display:none;" title="Open Sidebar">▶</button>
+        <span class="chat-title">NEXUS-R</span>
+        <div style="display:flex; gap: 8px; align-items: center;">
+            <button class="toggle-btn" id="openSettingsBtn" title="Settings">⚙️ Settings</button>
+            <div class="connection-status" id="connectionStatus">Disconnected</div>
+            <button class="toggle-btn collapsed-only" id="toggleRightBtnOpen" style="display:none;" title="Open Monitor">◀</button>
+        </div>
+      </div>
+      
+      <div class="chat-scroll-area">
+        <div class="chat-messages-container">
+          <div class="chat-messages" id="chatMessages">
+            <div class="chat-welcome">Select a conversation or start a new chat.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input-wrapper">
+        <div id="imagePreviewContainer" class="image-preview-container" style="display:none; padding: 10px; display: flex; gap: 10px; overflow-x: auto;"></div>
+        <div class="chat-input-container">
+          <div class="chat-input-row">
+            <span class="input-icon-plus" id="chatAttachBtn" title="Upload File">+</span>
+            <input type="file" id="chatFileInput" style="display:none" accept=".txt,.md,.py,.js,.json,.csv,.log,.html,.css,.yaml,.yml,.pdf,.docx,.png,.jpg,.jpeg,.webp">
+            <textarea id="chatInput" rows="1" placeholder="Write a message..." maxlength="10000"></textarea>
+            <div class="input-actions">
+              <span class="model-badge" id="chatModelBadge">NEXUS-R Local ∨</span>
+              <button id="chatSendBtn" class="send-btn">↑</button>
+            </div>
+          </div>
+          <div class="chat-disclaimer">NEXUS-R is AI and can make mistakes. Please double-check responses. <span id="chatCostBadge" style="margin-left: 8px;"></span></div>
+        </div>
       </div>
     </div>
-    <div class="recent-tasks">
-      <h3>Recent Tasks</h3>
-      <table id="recentTasksTable">
-        <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th></tr></thead>
-        <tbody id="recentTasksBody"></tbody>
-      </table>
+    
+    <!-- RIGHT MONITOR -->
+    <div class="chat-monitor" id="chatMonitor">
+      <div class="monitor-header">
+        <h3>Dev Pipeline</h3>
+        <div style="display:flex; align-items: center; gap: 8px;">
+          <span class="pulse-ring idle" id="monitorPulse"></span>
+          <button class="toggle-btn" id="toggleRightBtnClose" title="Close Monitor">▶</button>
+        </div>
+      </div>
+      
+      <div class="monitor-state-widget">
+        <div class="workflow-state" id="workflowState">idle</div>
+        <div class="workflow-stage" id="workflowStage">Ready</div>
+      </div>
+      
+      <div class="monitor-metrics">
+        <div class="metric-row"><span class="metric-label">Renderer</span><span class="metric-value" id="metricRenderer">Markdown</span></div>
+        <div class="metric-row"><span class="metric-label">Token Speed</span><span class="metric-value" id="metricSpeed">0.0 tok/s</span></div>
+        <div class="metric-row"><span class="metric-label">Execution Time</span><span class="metric-value" id="metricTime">0.0s</span></div>
+        <div class="metric-row"><span class="metric-label">Active Tools</span><span class="metric-value" id="metricTools">None</span></div>
+        <div class="metric-row"><span class="metric-label">Memory Usage</span><span class="metric-value" id="metricMemory">N/A</span></div>
+        
+        <div class="monitor-auto-model" id="monitorAutoModel" style="display:none;">
+          <div class="monitor-auto-model-label" style="font-size:11px;color:#8b949e;margin-top:8px;">Auto Model Selected</div>
+          <div class="monitor-auto-model-name" id="metricAutoModel" style="color:#ececec;font-family:monospace;font-size:12px;"></div>
+          <div class="monitor-auto-model-reason" id="metricAutoModelReason" style="font-size:11px;color:#a0a0a0;font-style:italic;"></div>
+        </div>
+      </div>
+      
+      <div class="reasoning-container" id="reasoningContainer">
+        <div class="reasoning-header" id="reasoningHeader">
+          <span>Live Reasoning Trace</span>
+          <span class="toggle-icon">▼</span>
+        </div>
+        <div class="reasoning-trace" id="reasoningTrace">No active reasoning trace.</div>
+      </div>
     </div>
-  </section>
+  </div>
 
-  <section id="tasks" class="tab-content">
-    <div class="filters">
-      <input type="text" id="taskFilterTier" placeholder="Filter by tier (e.g. T1)">
-      <input type="text" id="taskFilterModel" placeholder="Filter by model">
-      <button id="taskFilterBtn">Apply</button>
-    </div>
-    <table>
-      <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th><th>Timestamp</th></tr></thead>
-      <tbody id="tasksBody"></tbody>
-    </table>
-    <div class="pagination">
-      <button id="tasksPrev" disabled>Previous</button>
-      <span id="tasksPageInfo">Page 1</span>
-      <button id="tasksNext">Next</button>
-    </div>
-  </section>
+  <!-- SETTINGS MODAL -->
+  <div id="settingsModal" class="modal-overlay" style="display:none;">
+    <div class="settings-modal-card">
+      <div class="settings-modal-header">
+        <h3>System Settings</h3>
+        <span class="modal-close" id="closeSettingsBtn">×</span>
+      </div>
+      <div class="settings-modal-body">
+        <nav class="settings-sidebar-nav">
+          <button class="settings-tab active" data-tab="history">History</button>
+          <button class="settings-tab" data-tab="audit">Audit Log</button>
+          <button class="settings-tab" data-tab="etd">ETD Cache</button>
+          <button class="settings-tab" data-tab="models">Models</button>
+          <button class="settings-tab" data-tab="memory">Memory Center</button>
+        </nav>
+        <div class="settings-content-area">
+          <section id="history" class="settings-tab-content active">
+            <div class="history-toolbar">
+              <select id="historyConversationSelect"><option value="">All conversations</option></select>
+              <button id="historyRefreshBtn" class="filter-btn">Refresh</button>
+            </div>
+            <div class="history-messages" id="historyMessages"></div>
+          </section>
 
-  <section id="audit" class="tab-content">
-    <div class="filters">
-      <input type="text" id="auditFilterTaskId" placeholder="Task ID">
-      <input type="text" id="auditFilterModel" placeholder="Model">
-      <input type="date" id="auditFilterStart">
-      <input type="date" id="auditFilterEnd">
-      <button id="auditFilterBtn">Search</button>
-    </div>
-    <table>
-      <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th><th>Timestamp</th></tr></thead>
-      <tbody id="auditBody"></tbody>
-    </table>
-    <div class="pagination">
-      <button id="auditPrev" disabled>Previous</button>
-      <span id="auditPageInfo">Page 1</span>
-      <button id="auditNext">Next</button>
-    </div>
-  </section>
+          <section id="audit" class="settings-tab-content" style="display:none;">
+            <div class="filters">
+              <input type="text" id="auditFilterTaskId" placeholder="Task ID">
+              <input type="text" id="auditFilterModel" placeholder="Model">
+              <input type="date" id="auditFilterStart">
+              <input type="date" id="auditFilterEnd">
+              <button id="auditFilterBtn">Search</button>
+            </div>
+            <table>
+              <thead><tr><th>Task ID</th><th>Cost</th><th>Model</th><th>Tier</th><th>Timestamp</th></tr></thead>
+              <tbody id="auditBody"></tbody>
+            </table>
+            <div class="pagination">
+              <button id="auditPrev" disabled>Previous</button>
+              <span id="auditPageInfo">Page 1</span>
+              <button id="auditNext">Next</button>
+            </div>
+          </section>
 
-  <section id="etd" class="tab-content">
-    <table>
-      <thead><tr><th>ID</th><th>Intent</th><th>Hit Rate</th><th>Success Rate</th><th>Avg Cost</th><th>Avg Latency</th><th>Status</th></tr></thead>
-      <tbody id="etdBody"></tbody>
-    </table>
-  </section>
+          <section id="etd" class="settings-tab-content" style="display:none;">
+            <table>
+              <thead><tr><th>ID</th><th>Intent</th><th>Hit Rate</th><th>Success Rate</th><th>Avg Cost</th><th>Avg Latency</th><th>Status</th></tr></thead>
+              <tbody id="etdBody"></tbody>
+            </table>
+          </section>
 
-  <section id="models" class="tab-content">
-    <table>
-      <thead><tr><th>Model</th><th>Total Cost</th><th>Tasks</th><th>Avg Latency (ms)</th></tr></thead>
-      <tbody id="modelsBody"></tbody>
-    </table>
-  </section>
+          <section id="models" class="settings-tab-content" style="display:none;">
+            <div class="models-config">
+              <h3>Model Configuration</h3>
+              <div class="models-config-form">
+                <div class="config-field">
+                  <label for="localModelSelect">Local Model (Ollama)</label>
+                  <div class="field-row">
+                    <select id="localModelSelect"></select>
+                    <button id="modelsDownloadBtn" class="models-action-btn" style="display:none">Download</button>
+                    <button id="modelsTestLocalBtn" class="models-action-btn models-test-btn">Test</button>
+                  </div>
+                  <div id="localModelInfo" class="field-info"></div>
+                </div>
+                <div class="config-field">
+                  <label for="cloudProviderSelect">Cloud Provider</label>
+                  <div class="field-row">
+                    <select id="cloudProviderSelect"></select>
+                    <button id="modelsTestCloudBtn" class="models-action-btn models-test-btn" style="display:none">Test</button>
+                  </div>
+                  <div id="cloudProviderInfo" class="field-info"></div>
+                </div>
+                <div class="config-field">
+                  <label for="cloudApiKeyInput">API Key</label>
+                  <div class="field-row">
+                    <input type="password" id="cloudApiKeyInput" placeholder="Paste your API key">
+                    <span id="apiKeyValidation" class="validation-icon"></span>
+                  </div>
+                </div>
+                <div class="config-actions">
+                  <button id="modelsSaveBtn" class="filter-btn">Save &amp; Apply</button>
+                  <span id="modelsSaveStatus" class="models-status"></span>
+                </div>
+              </div>
+              <div id="modelsDownloadProgress" class="models-download" style="display:none">
+                <div id="downloadSizeWarning" class="download-size-warning" style="display:none"></div>
+                <div class="download-bar-track"><div class="download-bar-fill" id="downloadBarFill" style="width:0%"></div></div>
+                <div class="download-info-row">
+                  <span id="downloadStatusText">Starting download...</span>
+                  <button id="modelsCancelBtn" class="models-action-btn models-cancel-btn" style="display:none">Cancel</button>
+                </div>
+              </div>
+              <div id="modelsResult" class="models-result" style="display:none"></div>
+            </div>
+            <h3 style="margin-top:24px;">Cost by Model</h3>
+            <table>
+              <thead><tr><th>Model</th><th>Total Cost</th><th>Tasks</th><th>Avg Latency (ms)</th></tr></thead>
+              <tbody id="modelsBody"></tbody>
+            </table>
+          </section>
+
+          <section id="memory" class="settings-tab-content" style="display:none;">
+            <div class="metrics-grid" style="margin-bottom: 24px;">
+              <div class="metric-card">
+                <h4>Stored Memories</h4>
+                <div class="metric-value" id="memTotalCount">0</div>
+                <div class="metric-sub" id="memCapacity">of 500 cap</div>
+              </div>
+              <div class="metric-card">
+                <h4>Avg Confidence</h4>
+                <div class="metric-value" id="memAvgConfidence">0.0</div>
+              </div>
+              <div class="metric-card">
+                <h4>Embedding Model</h4>
+                <div class="metric-value" style="font-size: 1rem;" id="memEmbeddingModel">-</div>
+              </div>
+              <div class="metric-card">
+                <button id="memClearBtn" class="filter-btn" style="background:var(--danger-red); margin-top:10px;">Clear All Memories</button>
+              </div>
+            </div>
+            <div class="chat-layout" style="display: block; background: var(--panel-bg); border-radius: 8px; border: 1px solid var(--border-color); height: 400px; overflow-y: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Type</th>
+                    <th>Memory Content</th>
+                    <th>Confidence</th>
+                    <th>Age</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="memoryBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div id="hitlModal" class="modal-overlay" style="display:none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="hitlTitle">Security Challenge Detected</h3>
+        <span class="modal-close" onclick="closeHitlModal()">×</span>
+      </div>
+      <div class="modal-body">
+        <p id="hitlPrompt">MFA or CAPTCHA challenge is active. Please complete it directly or enter the OTP below.</p>
+        <div class="modal-screenshot-container">
+          <img id="hitlScreenshot" src="" alt="Browser Screenshot" />
+        </div>
+        <div class="modal-input-row" id="hitlInputRow">
+          <input type="text" id="hitlOtpInput" placeholder="Enter OTP/Verification Code" />
+          <button id="hitlSubmitBtn" class="filter-btn primary-btn">Submit Code</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="hitlSolvedBtn" class="filter-btn">I Solved It in Browser (Resume)</button>
+      </div>
+    </div>
+  </div>
+  
+  <div id="toastContainer" class="toast-container"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ModelSettings(BaseModel):
-    local_model: str = "ollama/qwen2.5:1.5b-instruct"
+    local_model: str = "ollama/gemma2:9b"
     local_fallback_model: str = "mock-local"
     byok_model: str = "groq/llama-3.3-70b-versatile"
     byok_fallback_model: str = "mock-byok"
@@ -20,9 +20,6 @@ class ModelSettings(BaseModel):
     provider_timeout_seconds: int = 120
     stream_timeout_seconds: int = 120
     provider_max_concurrency: int = 4
-    mock_latency_ms: int = 175
-    mock_response_prefix: str = "Mock provider response:"
-    enable_mock_fallbacks: bool = True
 
 
 class SandboxSettings(BaseModel):
