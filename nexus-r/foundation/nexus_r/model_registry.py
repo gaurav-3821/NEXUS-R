@@ -742,14 +742,54 @@ class ModelRegistry:
     ) -> AsyncIterator[ModelStreamChunk]:
 
         if provider.provider_kind != "local":
-            result = await self._invoke(provider, prompt, fallback_used, images=images)
-            yield ModelStreamChunk(
-                text=result.text,
-                model_name=result.model_name,
-                used_mock=result.used_mock,
-                fallback_used=result.fallback_used,
-                done=True,
+            from litellm import acompletion
+            from litellm.exceptions import (
+                AuthenticationError, LiteLLMTimeout
             )
+            
+            api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
+            if not api_key:
+                raise ProviderAuthError(
+                    f"API key not found: configure keyring secret '{self.config.models.byok_secret_name}'",
+                    provider=provider.name, tier=provider.provider_kind,
+                    failure_class="missing_credentials", retryable=False,
+                    fallback_decision="skip_chain_if_exhausted",
+                )
+                
+            msg_content = prompt
+            if images:
+                msg_content = [{"type": "text", "text": prompt}]
+                for img in images:
+                    msg_content.append({"type": "image_url", "image_url": {"url": img}})
+                    
+            try:
+                response = await acompletion(
+                    model=provider.name,
+                    messages=[{"role": "user", "content": msg_content}],
+                    api_key=api_key,
+                    timeout=self.config.models.stream_timeout_seconds,
+                    temperature=0,
+                    stream=True,
+                )
+                async for chunk in response:
+                    delta = chunk.choices[0].delta.content or ""
+                    yield ModelStreamChunk(
+                        text=delta,
+                        model_name=provider.name,
+                        used_mock=False,
+                        fallback_used=fallback_used,
+                        done=False,
+                    )
+                yield ModelStreamChunk(
+                    text="",
+                    model_name=provider.name,
+                    used_mock=False,
+                    fallback_used=fallback_used,
+                    done=True,
+                )
+            except Exception as e:
+                # If streaming fails, we could potentially retry, but we'll surface the error
+                raise self._classify_provider_error(e, provider)
             return
         if "auto" in self.config.models.local_model.lower():
             provider.name = self._get_dynamic_local_model(prompt)

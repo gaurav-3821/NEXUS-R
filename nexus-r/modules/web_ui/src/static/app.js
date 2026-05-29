@@ -1,10 +1,3 @@
-
-window.addEventListener('error', function(e) {
-  alert('JS Error: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
-});
-window.addEventListener('unhandledrejection', function(e) {
-  alert('Unhandled Rejection: ' + e.reason);
-});
 const API_BASE = "/api/v1";
 const WS_URL = `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/v1/cost/live`;
 const TOKEN = new URLSearchParams(location.search).get("token") || "";

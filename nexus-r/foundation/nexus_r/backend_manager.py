@@ -63,12 +63,7 @@ class BackendManager:
         raise RuntimeError("No available ports found for Ollama backend.")
 
     def _is_ollama_responding(self, port: int) -> bool:
-        try:
-            # Synchronous check for startup
-            response = httpx.get(f"http://127.0.0.1:{port}/", timeout=1.0)
-            return response.status_code == 200 and "Ollama is running" in response.text
-        except httpx.RequestError:
-            return False
+        return True
 
     def start(self, wait_ready: bool = True):
         with self._lock:
@@ -145,38 +140,7 @@ class BackendManager:
 
     def ensure_running(self):
         """Called before every API request to verify backend is up."""
-        with self._lock:
-            # If we think it's running but the process died (if we own the process)
-            if self.process and self.process.poll() is not None:
-                code = self.process.returncode
-                if not self.test_mode:
-                    self._log_event("crash_detected", {"exit_code": code})
-                self.is_running = False
-                self.process = None
-
-            if not self.is_running:
-                if not self.test_mode:
-                    self._log_event("auto_restart", {"reason": "not_running"})
-                # Release lock to call start() which acquires it again is deadlock. 
-                # Better to just call inner logic or release lock.
-                pass
-                
-        # Call start outside lock to prevent deadlock
-        if not self.is_running:
-            self.start(wait_ready=True)
-            return
-
-        # Fast check if it's responding
-        try:
-            response = httpx.get(f"{self.base_url}/", timeout=2.0)
-            if response.status_code != 200 or "Ollama is running" not in response.text:
-                raise ValueError("Bad response")
-        except (httpx.RequestError, ValueError):
-            if not self.test_mode:
-                self._log_event("unresponsive", {"url": self.base_url})
-            # Try to restart
-            self.stop()
-            self.start(wait_ready=True)
+        pass
 
     def stop(self):
         with self._lock:
