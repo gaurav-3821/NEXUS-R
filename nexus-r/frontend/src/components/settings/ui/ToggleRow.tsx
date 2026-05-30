@@ -1,7 +1,7 @@
 import React from 'react';
 import clsx from 'clsx';
 
-export interface ToggleRowProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface ToggleRowProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'onChange'> {
   label: string;
   description?: string;
   checked: boolean;
