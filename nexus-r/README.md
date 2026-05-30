@@ -1,155 +1,66 @@
-# NEXUS-R
+# NEXUS-R 🚀
 
-**The Offline-First AI Agent Runtime — Auditable, Cost-Optimized, Self-Learning**
+**The Next Generation Autonomous AI Orchestrator**
 
-NEXUS-R is an open-source agent runtime that runs local LLMs by default, escalates to cloud models only when needed, and progressively learns from experience to cut costs by 40–60% on repeat tasks.
-
----
-
-## Why NEXUS-R?
-
-Every AI agent today shares the same three problems:
-
-1. **Every API call burns money** — even trivial requests hit expensive cloud models
-2. **Learns nothing between runs** — the same question costs the same amount every time
-3. **Operates as a black box** — no audit trail, no cost attribution, no permission boundaries
-
-NEXUS-R solves all three with a modular, event-driven architecture built for transparency and efficiency.
+NEXUS-R is an advanced, highly modular Artificial Intelligence ecosystem designed to bridge the gap between high-performance cloud providers and secure, privacy-first local models. It is not just another chatbot; it is a full-fledged agentic router, cognitive workflow engine, and multi-model execution environment, packaged into a breathtaking, state-of-of-the-art interface.
 
 ---
 
-## Key Features
+## 🌟 The Vision (Why NEXUS-R?)
 
-| Capability | What it does |
-|---|---|
-| **Offline-first routing** | Runs local Ollama models by default; escalates to cloud only when task complexity exceeds a threshold |
-| **10 cloud providers** | Groq, OpenAI, Anthropic, Google Gemini, OpenRouter, NVIDIA NIM, Together AI, LocalAI, OpenCode, or bring your own key |
-| **Experience Trace Distillation** | Caches successful execution patterns — repeat tasks skip the LLM call entirely, cutting latency by 60–80% |
-| **Append-only EventStore** | Every action, cost, and decision is logged to SQLite — fully auditable, no data ever overwritten |
-| **Live dashboard** | Real-time WebSocket updates, chat interface, model switching, download orchestration — all in the browser |
-| **Semantic memory** | Embedding-based episodic memory (offline, using Ollama) — remembers user preferences across sessions |
-| **Permission enforcer** | Tier-based approval system with risk classification and prompt injection defense |
-| **Browser automation** | Headless Playwright integration for web navigation, form filling, and JS evaluation |
-| **Desktop app** | Electron-based native client for seamless local experience |
+The AI landscape is currently fragmented. Users are forced to choose between the raw intelligence of expensive cloud models (OpenAI, Anthropic) or the privacy and cost-effectiveness of local execution (Ollama). 
 
----
+**NEXUS-R bridges this gap.** 
+By acting as an intelligent orchestrator, NEXUS-R automatically routes intents to the optimal model based on the complexity of the task, current cost constraints, and privacy requirements. It pairs this advanced "Cognition Router" with a deeply integrated Semantic Memory Engine and an isolated Execution Sandbox to create true, persistent autonomous workflows.
 
-## Architecture
+## ✨ Core Features
 
-```
-User Input → Input Gateway → Cognition Router → Execution Sandbox
-                │                  │                    │
-                │            ┌─────┴─────┐         ┌────┴────┐
-                │            │           │         │         │
-           Intent Parser  Local Model  Cloud API  Terminal  Browser
-           Memory Parser  (Ollama)     (BYOK)     Sandbox   (Playwright)
-                │            │           │              │
-                └────────────┴───────────┴──────────────┘
-                              │
-                         State Core
-                    ┌───────┴───────┐
-                    │               │
-              EventStore       Memory Engine
-              (SQLite)        (Embeddings)
+### 🧠 1. Cognition Router & Multi-Model Engine
+NEXUS-R supports **10+ AI Providers** out of the box (OpenAI, Anthropic, Groq, OpenRouter, Ollama, etc.). The built-in capability profiler automatically routes complex reasoning tasks to high-tier models (like GPT-4o) and fast, simple tasks to hyper-fast local models, radically optimizing token cost and execution speed.
 
-Workflow Engine (ETD) ⇄ Trust Layer (Permissions + Cost) ⇄ Web UI Dashboard
-```
+### 🛡️ 2. Trust Layer & Human-in-the-Loop (HITL)
+Security is paramount. The Trust Layer handles real-time prompt injection defense, strict permission enforcement, and secret management. If NEXUS-R encounters a CAPTCHA or a high-risk security wall during automated web browsing, the **HITL (Human-in-the-Loop)** protocol instantly alerts the user in the UI, allowing them to solve the challenge before the agent resumes.
 
-**53 Python modules** across 11 subsystems:
+### 💾 3. State Core & Semantic Memory
+Unlike generic chatbots that forget context, NEXUS-R features a localized Semantic Memory Engine. It actively distills important insights, user preferences, and behavior patterns into a persistent identity store, allowing the AI to learn and adapt to you over time without leaking data to cloud providers.
 
-| Module | Role |
-|---|---|
-| `foundation/` | Core config, events, telemetry, model registry |
-| `input_gateway/` | Intent classification, parameter extraction, memory commands |
-| `cognition_router/` | Capability profiling, parallel probing, model lifecycle |
-| `trust_layer/` | Permission enforcement, cost tracking, secret registry |
-| `state_core/` | Semantic memory, behavior tracking, identity, working state |
-| `workflow_engine/` | ETD cache: distiller, generalizer, indexer, retriever |
-| `execution_sandbox/` | Sandboxed terminal, browser automation, calculator, forecaster |
-| `session_manager/` | Session lifecycle |
-| `orchestrator/` | Top-level workflow orchestration |
-| `web_ui/` | FastAPI dashboard, chat handler, launcher, preference engine |
-| `cli/` | Typer-based command-line interface |
+### ⚡ 4. Execution Sandbox
+Equipped with a secure sandbox, NEXUS-R executes code, calculates complex math, and browses the web autonomously. It provides a real-time "Live Reasoning Trace," giving users complete transparency into the agent's thought process and active tool usage.
+
+### 🎨 5. "CHAT A.I+" Premium Interface
+The frontend isn't an afterthought—it's a masterpiece. NEXUS-R ships with a stunning, ultra-modern Light Theme UI ("CHAT A.I+"). Featuring glassmorphic elements, beautiful typography (Inter), inline model selection, and micro-animations, the interface is designed to wow users from the first click.
 
 ---
 
-## Dashboard
+## 🏗️ Architecture & Modules
 
-A real-time browser interface served by FastAPI:
+The platform is strictly modular, built entirely in Python (FastAPI backend) and pure HTML/CSS/Vanilla JS (for maximum performance).
 
-| Tab | Purpose |
-|---|---|
-| **Chat** | Conversational interface — streams responses live via WebSocket |
-| **History** | Browse past conversations with cost and latency metadata |
-| **Audit Log** | Searchable, paginated log of every action with cost breakdown |
-| **ETD Cache** | Cache hit rates, success rates, average cost savings |
-| **Models** | Configure local models, cloud providers, API keys, download models with live progress |
-
-**One command to start:**
-
-```bash
-nexus dashboard start
-# Opens http://localhost:8000?token=<auto-generated>
-```
-
-Windows fallback:
-```bash
-python scripts/start_dashboard.py
-```
+- **`cli/`**: The command-line interface for starting the dashboard and managing services.
+- **`cognition_router/`**: Manages model connections, load balancing, and intelligent task delegation.
+- **`trust_layer/`**: Live cost tracking, secret registry (API keys), and prompt defense.
+- **`execution_sandbox/`**: Browser automation and secure code execution tools.
+- **`input_gateway/`**: Processes user intents, extracting actionable parameters before routing.
+- **`state_core/`**: The persistent Semantic Memory database.
+- **`workflow_engine/`**: Records execution traces and distills successful workflows into reusable pipelines.
+- **`web_ui/`**: The FastAPI-powered server hosting the sleek frontend client.
 
 ---
 
-## Quick Start
+## 🚀 Getting Started
 
-```bash
-# Install
-pip install nexus-r
-
-# Start the dashboard
-nexus dashboard start
-
-# Or programmatically
-from nexus_r.config import NEXUSConfig
-from modules.web_ui.src.app import create_app
-config = NEXUSConfig.from_env("./workspace")
-app = create_app(...)
-```
-
-**Prerequisites:** Python 3.11+, Ollama (for local models), optionally a cloud API key.
+1. **Install Dependencies**: 
+   Ensure you have Python 3.12+ installed.
+   ```bash
+   pip install -r requirements.txt
+   ```
+2. **Start the Engine**:
+   ```bash
+   python modules/cli/src/main.py dashboard start
+   ```
+3. **Experience NEXUS-R**:
+   Open your browser and navigate to `http://localhost:8000` to interact with the new CHAT A.I+ interface. Connect your local Ollama instance or input your API keys via the Settings panel to unleash the full power of the orchestrator.
 
 ---
 
-## Status
-
-**Phase 3** — Production-ready dashboard and model orchestration.
-
-- 53 Python modules across 11 subsystems
-- 137+ passing tests (unit, integration, security)
-- Full download lifecycle management with progress tracking and cancel/resume
-- Semantic memory with offline embedding-based retrieval
-- 10 cloud providers with format validation and error classification
-
-### Roadmap
-
-- Distributed rate limiting and multi-node coordination
-- Docker container-level sandbox isolation
-- Authenticated browser session management
-- Plugin system for third-party tools and providers
-
----
-
-## License
-
-MIT — free for personal and commercial use.
-
----
-
-## Validation & Reports
-
-- [Phase 2 Validation Summary](docs/phase2_validation_summary.md)
-- [Cost Dashboard Deployment Guide](docs/cost_dashboard_deployment.md)
-- [EventStore Scaling Report](docs/eventstore_scaling_report.md)
-- [Provider Failure Report](docs/provider_failure_report.md)
-- [Recovery Guide](docs/test_environment_recovery.md)
-- [Phase 2 Stabilization Report](docs/phase2_stabilization_change_report.md)
-- [Phase 2 Stabilization Handoff](docs/phase2_stabilization_handoff.md)
+### *NEXUS-R: Unifying Intelligence, Privacy, and Execution.*
