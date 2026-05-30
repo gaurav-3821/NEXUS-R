@@ -6,14 +6,22 @@ export interface ToggleRowProps extends Omit<React.HTMLAttributes<HTMLDivElement
   description?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  icon?: React.ReactNode;
 }
 
-export function ToggleRow({ label, description, checked, onChange, className, ...props }: ToggleRowProps) {
+export function ToggleRow({ label, description, checked, onChange, className, icon, ...props }: ToggleRowProps) {
   return (
-    <div className={clsx("flex items-center justify-between py-2 border-b border-gray-100 last:border-0", className)} {...props}>
-      <div>
-        <div className="text-[15px] font-semibold text-gray-800">{label}</div>
-        {description && <div className="text-[13px] text-gray-500 mt-0.5">{description}</div>}
+    <div 
+      className={clsx("flex items-center justify-between p-4 hover:bg-gray-50 transition-colors cursor-pointer", className)} 
+      onClick={() => onChange(!checked)}
+      {...props}
+    >
+      <div className="flex items-center gap-3">
+        {icon && <div className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0">{icon}</div>}
+        <div>
+          <div className="text-sm font-bold text-gray-900">{label}</div>
+          {description && <div className="text-[13px] font-medium text-gray-500 mt-0.5">{description}</div>}
+        </div>
       </div>
       <button
         type="button"
