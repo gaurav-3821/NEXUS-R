@@ -1,4 +1,4 @@
-import { apiFetch, apiPost, getToken, clearTokenCache, API_BASE } from './client';
+import { apiFetch, apiPost, apiDelete, getToken, clearTokenCache, API_BASE } from './client';
 
 export interface ChatRequestParams {
   message: string;
@@ -69,6 +69,14 @@ export async function interruptChat(messageId: string): Promise<{ success: boole
 
 export async function resumeHITL(messageId: string, code?: string, solved: boolean = false): Promise<{ success: boolean }> {
   return apiPost('/chat/hitl-resume', { message_id: messageId, code, solved });
+}
+
+export async function deleteConversation(conversationId: string): Promise<{ success: boolean }> {
+  return apiDelete(`/chat/conversations/${encodeURIComponent(conversationId)}`);
+}
+
+export async function clearAllConversations(): Promise<{ success: boolean }> {
+  return apiPost('/chat/clear-all');
 }
 
 export async function getConversations(limit: number = 50, offset: number = 0): Promise<{ conversations: Conversation[] }> {

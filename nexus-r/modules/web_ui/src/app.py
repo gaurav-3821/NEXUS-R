@@ -854,6 +854,80 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         )
         return {"messages": results}
 
+    @app.delete("/api/v1/chat/conversations/{conversation_id}")
+    async def chat_delete_conversation(conversation_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("delete_conversation")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.delete_conversation(conversation_id)
+        return {"success": success}
+
+    @app.post("/api/v1/chat/clear-all")
+    async def chat_clear_all(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("clear_all")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.clear_all_conversations()
+        return {"success": success}
+
+    # --- Projects ---
+
+    @app.get("/api/v1/projects")
+    async def projects_list(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("projects_list")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        projects = await _chat_handler.get_projects()
+        return {"projects": projects}
+
+    @app.post("/api/v1/projects")
+    async def projects_create(req: dict[str, Any], token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("projects_create")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        project = await _chat_handler.create_project(name=req.get("name", ""), description=req.get("description", ""))
+        return project
+
+    @app.put("/api/v1/projects/{project_id}")
+    async def projects_update(project_id: str, req: dict[str, Any], token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("projects_update")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.update_project(project_id, name=req.get("name"), description=req.get("description"))
+        return {"success": success}
+
+    @app.delete("/api/v1/projects/{project_id}")
+    async def projects_delete(project_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("projects_delete")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.delete_project(project_id)
+        return {"success": success}
+
+    @app.post("/api/v1/projects/{project_id}/conversations")
+    async def projects_add_conversation(project_id: str, req: dict[str, Any], token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("projects_add_conv")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.add_conversation_to_project(project_id, req.get("conversation_id", ""))
+        return {"success": success}
+
+    @app.delete("/api/v1/projects/{project_id}/conversations/{conversation_id}")
+    async def projects_remove_conversation(project_id: str, conversation_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("projects_remove_conv")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.remove_conversation_from_project(project_id, conversation_id)
+        return {"success": success}
+
     @app.get("/api/v1/chat/message/{message_id}")
     async def chat_message(
         message_id: str,

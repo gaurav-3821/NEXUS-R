@@ -1,17 +1,56 @@
+import { useEffect, useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useAppearanceStore } from '../../store/appearanceStore';
+import { useProjectsStore } from '../../store/projectsStore';
 import { APP_NAME } from '../../constants';
-import { Plus, Search, Settings, MessageSquare, Trash2 } from 'lucide-react';
+import { Plus, Search, Settings, Folder, MessageSquare } from 'lucide-react';
 import clsx from 'clsx';
 import { UserProfileCard } from './UserProfileCard';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { ProjectGroup, UncategorizedGroup } from './ProjectGroup';
 
 export default function Sidebar() {
-  const { conversations, currentConversationId, setCurrentConversation, loadConversationMessages, startNewChat } = useAppStore();
+  const { conversations, currentConversationId, setCurrentConversation, loadConversationMessages, startNewChat, deleteConversation, clearAllConversations } = useAppStore();
+  const { projects, loadProjects, addProject } = useProjectsStore();
   const { sidebarTransparency, compactMode } = useAppearanceStore();
   const navigate = useNavigate();
   const location = useLocation();
   const isSettingsActive = location.pathname.startsWith('/settings');
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+
+  useEffect(() => {
+    loadProjects();
+  }, [loadProjects]);
+
+  // Group conversations by project
+  const projectConversationMap: Record<string, typeof conversations> = {};
+  const uncategorizedConversations: typeof conversations = [];
+  const projectIds = new Set(projects.map(p => p.project_id));
+
+  for (const conv of conversations) {
+    let assigned = false;
+    for (const project of projects) {
+      if (project.conversation_ids.includes(conv.id)) {
+        if (!projectConversationMap[project.project_id]) {
+          projectConversationMap[project.project_id] = [];
+        }
+        projectConversationMap[project.project_id].push(conv);
+        assigned = true;
+        break;
+      }
+    }
+    if (!assigned) {
+      uncategorizedConversations.push(conv);
+    }
+  }
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    await addProject(newProjectName.trim());
+    setNewProjectName('');
+    setIsCreatingProject(false);
+  };
 
   return (
     <div className={clsx(
@@ -43,34 +82,61 @@ export default function Sidebar() {
       {/* Conversations List */}
       <div className={clsx("flex-1 overflow-y-auto px-4 mt-4", compactMode ? "space-y-0.5" : "space-y-1")}>
         <div className="flex items-center justify-between px-2 mb-3">
-          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Your conversations</span>
-          <button className="text-[11px] font-semibold text-accent-500 hover:text-accent-600 transition-colors">Clear All</button>
+          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Projects</span>
+          <button
+            onClick={() => setIsCreatingProject(true)}
+            className="text-[11px] font-semibold text-accent-500 hover:text-accent-600 transition-colors flex items-center gap-1"
+          >
+            <Plus size={12} /> New
+          </button>
         </div>
-        
-        {conversations.length === 0 ? (
+
+        {/* Create project inline */}
+        {isCreatingProject && (
+          <div className="px-2 mb-2">
+            <div className="flex gap-1">
+              <input
+                autoFocus
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateProject(); if (e.key === 'Escape') { setIsCreatingProject(false); setNewProjectName(''); } }}
+                placeholder="Project name..."
+                className="flex-1 text-xs px-2 py-1 rounded border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 outline-none focus:border-accent-500 dark:text-gray-200"
+              />
+              <button onClick={handleCreateProject} className="text-xs px-2 py-1 bg-accent-600 text-white rounded hover:bg-accent-700">
+                Add
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Project groups */}
+        {projects.map(project => (
+          <ProjectGroup
+            key={project.project_id}
+            project={project}
+            conversations={projectConversationMap[project.project_id] || []}
+          />
+        ))}
+
+        {/* Uncategorized conversations */}
+        {uncategorizedConversations.length > 0 && (
+          <UncategorizedGroup conversations={uncategorizedConversations} />
+        )}
+
+        {conversations.length === 0 && (
           <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">No previous chats</div>
-        ) : (
-          conversations.map(conv => (
+        )}
+
+        {conversations.length > 0 && (
+          <div className="px-2 mt-3">
             <button
-              key={conv.id}
-              onClick={() => {
-                setCurrentConversation(conv.id);
-                loadConversationMessages(conv.id);
-                navigate('/');
-              }}
-              className={clsx(
-                "w-full text-left rounded-xl flex items-center gap-3 group transition-colors",
-                compactMode ? "px-2 py-1.5" : "px-3 py-2.5",
-                currentConversationId === conv.id && !isSettingsActive
-                  ? "bg-accent-50 dark:bg-accent-500/20 text-accent-600 dark:text-accent-400" 
-                  : "text-gray-600 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-gray-900 dark:hover:text-gray-100"
-              )}
+              onClick={() => { if (confirm('Delete all conversations?')) clearAllConversations(); }}
+              className="text-[11px] font-semibold text-red-500 hover:text-red-600 transition-colors"
             >
-              <MessageSquare size={16} className={currentConversationId === conv.id && !isSettingsActive ? "text-accent-600 dark:text-accent-400" : "text-gray-400 dark:text-gray-500"} />
-              <span className="truncate flex-1 text-sm font-medium">{conv.title || "New Conversation"}</span>
-              <Trash2 size={14} className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-opacity" />
+              Clear All
             </button>
-          ))
+          </div>
         )}
       </div>
 

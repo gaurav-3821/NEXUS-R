@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { sendChat, streamChat, interruptChat, getConversations, getHistory } from '../api/chat';
+import { sendChat, streamChat, interruptChat, getConversations, getHistory, deleteConversation as apiDeleteConversation, clearAllConversations as apiClearAll } from '../api/chat';
 
 export interface Message {
   id: string;
@@ -59,6 +59,8 @@ interface AppState {
   interruptChat: () => Promise<void>;
   loadConversations: () => Promise<void>;
   loadConversationMessages: (conversationId: string) => Promise<void>;
+  deleteConversation: (conversationId: string) => Promise<void>;
+  clearAllConversations: () => Promise<void>;
   startNewChat: () => void;
 }
 
@@ -244,6 +246,31 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ messages: msgs, currentConversationId: conversationId, streamingMsgId: null });
     } catch (e) {
       console.error('Failed to load conversation messages:', e);
+    }
+  },
+
+  deleteConversation: async (conversationId: string) => {
+    try {
+      await apiDeleteConversation(conversationId);
+      set((state) => ({
+        conversations: state.conversations.filter(c => c.id !== conversationId),
+        currentConversationId: state.currentConversationId === conversationId ? null : state.currentConversationId,
+      }));
+      if (get().currentConversationId === null || get().currentConversationId === conversationId) {
+        get().startNewChat();
+      }
+    } catch (e) {
+      console.error('Failed to delete conversation:', e);
+    }
+  },
+
+  clearAllConversations: async () => {
+    try {
+      await apiClearAll();
+      set({ conversations: [], currentConversationId: null });
+      get().startNewChat();
+    } catch (e) {
+      console.error('Failed to clear conversations:', e);
     }
   },
 

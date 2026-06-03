@@ -104,6 +104,34 @@ export async function apiPost(path: string, body: any = {}): Promise<any> {
   return resp.json();
 }
 
+export async function apiPut(path: string, body: any = {}): Promise<any> {
+  let url = `${API_BASE}${path}?token=${encodeURIComponent(await getToken())}`;
+  let reqConfig = {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+  let resp = await fetch(url, reqConfig);
+  if (resp.status === 403 && import.meta.env.DEV) {
+    clearTokenCache();
+    url = `${API_BASE}${path}?token=${encodeURIComponent(await getToken())}`;
+    resp = await fetch(url, reqConfig);
+  }
+  if (!resp.ok) {
+    if (resp.status === 403) window.dispatchEvent(new Event("auth_error"));
+    let detail = "";
+    const textBody = await resp.text();
+    try {
+      const errBody = JSON.parse(textBody);
+      detail = errBody.detail || errBody.error || "";
+    } catch (_) {
+      detail = textBody;
+    }
+    throw new Error(`${resp.status}: ${detail || resp.statusText}`);
+  }
+  return resp.json();
+}
+
 export async function apiDelete(path: string): Promise<any> {
   let url = `${API_BASE}${path}?token=${encodeURIComponent(await getToken())}`;
   let reqConfig = { method: "DELETE" };

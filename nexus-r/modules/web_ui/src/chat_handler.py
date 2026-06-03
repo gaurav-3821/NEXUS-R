@@ -1047,12 +1047,38 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 "timestamp": ts,
             })
 
+    async def delete_conversation(self, conversation_id: str) -> bool:
+        event = Event(
+            event_type="conversation_deleted",
+            data={
+                "conversation_id": conversation_id,
+                "deleted_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        await self.event_store.append(event)
+        return True
+
+    async def clear_all_conversations(self) -> bool:
+        convs = await self.get_conversations(limit=1000)
+        for c in convs:
+            await self.delete_conversation(c["conversation_id"])
+        return True
+
     async def get_conversations(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         events = await self.event_store.get_by_type("conversation_created")
+        deleted_events = await self.event_store.get_by_type("conversation_deleted")
+        deleted_ids = {e.data.get("conversation_id") for e in deleted_events if e.data.get("conversation_id")}
         sorted_events = sorted(events, key=lambda e: e.data.get("created_at", ""), reverse=True)
         results = []
-        for event in sorted_events[offset:offset + limit]:
+        for event in sorted_events:
+            if len(results) >= limit:
+                break
             conv_id = event.data.get("conversation_id", "")
+            if conv_id in deleted_ids:
+                continue
+            if offset > 0:
+                offset -= 1
+                continue
             count = await self._get_message_count(conv_id)
             results.append({
                 "conversation_id": conv_id,
@@ -1119,3 +1145,94 @@ When you output a `browser_action`, the system will execute it on the page, chec
     async def _get_message_count(self, conversation_id: str) -> int:
         sent = await self.event_store.get_by_type("chat_message_sent")
         return sum(1 for e in sent if e.data.get("conversation_id") == conversation_id)
+
+    # --- Projects ---
+
+    async def create_project(self, name: str, description: str = "") -> dict[str, Any]:
+        project_id = "proj_" + str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        event = Event(
+            event_type="project_created",
+            data={"project_id": project_id, "name": name, "description": description, "created_at": now},
+        )
+        await self.event_store.append(event)
+        return {"project_id": project_id, "name": name, "description": description, "created_at": now, "conversation_ids": []}
+
+    async def get_projects(self) -> list[dict[str, Any]]:
+        created = await self.event_store.get_by_type("project_created")
+        deleted = await self.event_store.get_by_type("project_deleted")
+        updated = await self.event_store.get_by_type("project_updated")
+        added = await self.event_store.get_by_type("project_conversation_added")
+        removed = await self.event_store.get_by_type("project_conversation_removed")
+
+        deleted_ids = {e.data["project_id"] for e in deleted if e.data.get("project_id")}
+
+        # Build project-conversation map
+        conv_map: dict[str, set[str]] = {}
+        for e in added:
+            pid = e.data.get("project_id")
+            cid = e.data.get("conversation_id")
+            if pid and cid:
+                conv_map.setdefault(pid, set()).add(cid)
+        for e in removed:
+            pid = e.data.get("project_id")
+            cid = e.data.get("conversation_id")
+            if pid and cid and pid in conv_map:
+                conv_map[pid].discard(cid)
+
+        # Latest name/description from update events
+        name_map: dict[str, str] = {}
+        desc_map: dict[str, str] = {}
+        for e in updated:
+            pid = e.data.get("project_id")
+            if pid and pid not in deleted_ids:
+                if e.data.get("name"):
+                    name_map[pid] = e.data["name"]
+                if "description" in e.data:
+                    desc_map[pid] = e.data["description"]
+
+        results = []
+        for e in created:
+            pid = e.data.get("project_id", "")
+            if pid in deleted_ids:
+                continue
+            results.append({
+                "project_id": pid,
+                "name": name_map.get(pid, e.data.get("name", "")),
+                "description": desc_map.get(pid, e.data.get("description", "")),
+                "created_at": e.data.get("created_at", ""),
+                "conversation_ids": list(conv_map.get(pid, set())),
+            })
+        return results
+
+    async def update_project(self, project_id: str, name: str | None = None, description: str | None = None) -> bool:
+        event = Event(
+            event_type="project_updated",
+            data={"project_id": project_id, "name": name, "description": description},
+        )
+        await self.event_store.append(event)
+        return True
+
+    async def delete_project(self, project_id: str) -> bool:
+        event = Event(
+            event_type="project_deleted",
+            data={"project_id": project_id, "deleted_at": datetime.now(timezone.utc).isoformat()},
+        )
+        await self.event_store.append(event)
+        return True
+
+    async def add_conversation_to_project(self, project_id: str, conversation_id: str) -> bool:
+        event = Event(
+            event_type="project_conversation_added",
+            data={"project_id": project_id, "conversation_id": conversation_id},
+        )
+        await self.event_store.append(event)
+        return True
+
+    async def remove_conversation_from_project(self, project_id: str, conversation_id: str) -> bool:
+        event = Event(
+            event_type="project_conversation_removed",
+            data={"project_id": project_id, "conversation_id": conversation_id},
+        )
+        await self.event_store.append(event)
+        return True
