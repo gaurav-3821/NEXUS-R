@@ -1087,12 +1087,23 @@ class ModelManager:
             if routing_profile is not None:
                 saved["routingProfile"] = routing_profile
             try:
-                self.save_config(saved)
+                self._config_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(self._config_path, "w") as f:
+                    json.dump(saved, f, indent=2)
             except Exception as exc:
                 errors.append(f"Failed to persist config: {exc}")
 
             if self.router:
-                self._hot_reload_car()
+                routing_only = (
+                    routing_profile is not None
+                    and local_model is None
+                    and cloud_provider is None
+                    and api_key is None
+                )
+                if routing_only:
+                    self._apply_routing_profile(routing_profile)
+                else:
+                    self._hot_reload_car()
 
             try:
                 await self.event_store.append(Event(
@@ -1170,6 +1181,24 @@ class ModelManager:
             logger.info("CAR hot-reloaded: local=%s, byok=%s", local_model, self.config.models.byok_model or "none")
         except Exception as exc:
             logger.error("CAR hot-reload failed: %s", exc, exc_info=True)
+
+    def _apply_routing_profile(self, routing_profile: dict) -> None:
+        if not self.router or not hasattr(self.router, "models"):
+            logger.warning("Cannot apply routing profile: router not ready")
+            return
+        try:
+            mr = self.router.models
+            if routing_profile.get("reasoning"):
+                mr._semantic_categories["math_reasoning"]["default_model"] = routing_profile["reasoning"]
+            if routing_profile.get("coding"):
+                mr._semantic_categories["coding"]["default_model"] = routing_profile["coding"]
+            if routing_profile.get("general"):
+                mr._semantic_categories["creative"]["default_model"] = routing_profile["general"]
+                mr._semantic_categories["conversational"]["default_model"] = routing_profile["general"]
+            logger.info("Routing profile applied: reasoning=%s, coding=%s, general=%s",
+                        routing_profile.get("reasoning"), routing_profile.get("coding"), routing_profile.get("general"))
+        except Exception as exc:
+            logger.error("Failed to apply routing profile: %s", exc, exc_info=True)
 
     # Legacy sync download (kept for configure path)
     async def download_model(self, model_name: str) -> dict[str, Any]:
