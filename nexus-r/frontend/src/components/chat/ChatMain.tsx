@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm';
 
 export default function ChatMain() {
   const { messages } = useAppStore();
-  const { compactMode } = useAppearanceStore();
+  const { compactMode, showResponseMetadata } = useAppearanceStore();
 
   return (
     <div className="flex flex-col h-full relative w-full items-center">
@@ -71,11 +71,20 @@ export default function ChatMain() {
 
                 {/* Regenerate Button for Assistant */}
                 {msg.role === 'assistant' && msg.id !== 'welcome' && !msg.streaming && (
-                  <div className="mt-4 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors">
+                  <div className="mt-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors self-start">
                       <RefreshCw size={12} />
                       Regenerate
                     </button>
+                    {showResponseMetadata && msg.metadata && (
+                      <div className="mt-1 flex flex-col gap-1 text-[11px] font-mono text-gray-400 dark:text-slate-500 border-t border-gray-100 dark:border-slate-800 pt-2">
+                        <div>Model: {msg.metadata.model}</div>
+                        <div>Provider: {msg.metadata.provider}</div>
+                        <div>Route: {msg.metadata.route}</div>
+                        <div>Latency: {Math.round(msg.metadata.latency_ms)}ms</div>
+                        <div>Cost: ${msg.metadata.cost.toFixed(6)}</div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

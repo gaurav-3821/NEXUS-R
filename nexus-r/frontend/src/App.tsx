@@ -15,7 +15,11 @@ const AppearancePage = lazy(() => import('./components/settings/AppearancePage')
 const PlaceholderPage = lazy(() => import('./components/settings/PlaceholderPage'));
 
 function App() {
-  const { isSidebarOpen } = useAppStore();
+  const { isSidebarOpen, loadConversations } = useAppStore();
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
 
   useEffect(() => {
     // Basic WebSocket connection setup mirroring the original app.js

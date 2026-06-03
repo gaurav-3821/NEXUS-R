@@ -31,7 +31,7 @@ export default function AppearancePage() {
   const location = useLocation();
   const activeTab = location.pathname.split('/').pop() || 'appearance';
 
-  const { themeMode, accentColor, compactMode, highContrast, reduceAnimations, sidebarTransparency, loadSettings, updateSetting, importTheme, exportTheme, resetToDefaults } = useAppearanceStore();
+  const { themeMode, accentColor, compactMode, highContrast, reduceAnimations, sidebarTransparency, showResponseMetadata, loadSettings, updateSetting, importTheme, exportTheme, resetToDefaults } = useAppearanceStore();
 
   useEffect(() => {
     loadSettings();
@@ -328,6 +328,7 @@ export default function AppearancePage() {
               onChange={(c) => updateSetting('themeMode', c ? 'system' : 'light')} 
               icon={<Monitor size={16} className="text-gray-500 dark:text-gray-400" />}
               className="border-b border-gray-100 dark:border-slate-800 last:border-0"
+              variant="plane"
             />
             
             <ToggleRow 
@@ -363,6 +364,15 @@ export default function AppearancePage() {
               checked={highContrast} 
               onChange={(c) => updateSetting('highContrast', c)} 
               icon={<Type size={16} className="text-gray-500 dark:text-gray-400" />}
+              className="border-b border-gray-100 last:border-0"
+            />
+
+            <ToggleRow 
+              label="Show Response Metadata" 
+              description="Display actual model, route, provider, latency, and cost for every response." 
+              checked={showResponseMetadata} 
+              onChange={(c) => updateSetting('showResponseMetadata', c)} 
+              icon={<Info size={16} className="text-gray-500 dark:text-gray-400" />}
               className="border-b border-gray-100 last:border-0"
             />
           </div>

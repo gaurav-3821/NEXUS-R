@@ -18,6 +18,7 @@ interface ModelsActions {
   updateRoutingProfile: (profile: Partial<RoutingProfile>) => Promise<boolean>;
   testConnection: (localModel?: string, cloudProvider?: string, apiKey?: string) => Promise<{ success: boolean; latency_ms?: number; response?: string; error?: string; warning?: string }>;
   loadDownloadJobs: () => Promise<void>;
+  refreshLocalModels: () => Promise<void>;
   startModelDownload: (modelName: string) => Promise<boolean>;
   cancelModelDownload: (jobId: string) => Promise<boolean>;
 }
@@ -118,11 +119,29 @@ export const useModelsStore = create<ModelsStore>((set, get) => ({
     }
   },
 
+  refreshLocalModels: async () => {
+    try {
+      const local = await getLocalModels();
+      const allLocal: any[] = [];
+      if (local && typeof local === 'object') {
+        for (const key of Object.keys(local)) {
+          if (Array.isArray(local[key])) {
+            allLocal.push(...local[key]);
+          }
+        }
+      }
+      set({ localModels: allLocal });
+    } catch (error: any) {
+      console.error('Failed to refresh local models', error);
+    }
+  },
+
   startModelDownload: async (modelName: string) => {
     try {
       const res = await startDownload(modelName);
-      if (res.success) {
+      if (res.success || res.status === 'already_downloaded') {
         await get().loadDownloadJobs();
+        await get().refreshLocalModels();
         return true;
       }
       return false;

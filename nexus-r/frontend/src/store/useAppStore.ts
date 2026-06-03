@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { sendChat, streamChat, interruptChat } from '../api/chat';
+import { sendChat, streamChat, interruptChat, getConversations, getHistory } from '../api/chat';
 
 export interface Message {
   id: string;
@@ -12,6 +12,13 @@ export interface Message {
   model?: string;
   auto_model?: string;
   auto_model_reason?: string;
+  metadata?: {
+    model: string;
+    provider: string;
+    route: string;
+    latency_ms: number;
+    cost: number;
+  };
 }
 
 export interface Conversation {
@@ -50,6 +57,9 @@ interface AppState {
   // Domain actions
   sendChatMessage: (content: string, model?: string) => Promise<void>;
   interruptChat: () => Promise<void>;
+  loadConversations: () => Promise<void>;
+  loadConversationMessages: (conversationId: string) => Promise<void>;
+  startNewChat: () => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -148,11 +158,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         } else if (event.type === 'done') {
           if (!get().currentConversationId && event.conversation_id) {
             set({ currentConversationId: event.conversation_id });
+            get().loadConversations();
           }
           set((s) => {
             const updatedMsgs = s.messages.map(m => {
               if (m.id === msgId) {
-                return { ...m, streaming: false, model: event.model };
+                return { ...m, streaming: false, model: event.model, metadata: event.metadata };
               }
               return m;
             });
@@ -203,5 +214,51 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       console.error(e);
     }
+  },
+
+  loadConversations: async () => {
+    try {
+      const data = await getConversations();
+      set({ conversations: data.conversations || [] });
+    } catch (e) {
+      console.error('Failed to load conversations:', e);
+    }
+  },
+
+  loadConversationMessages: async (conversationId: string) => {
+    try {
+      const data = await getHistory(conversationId);
+      const msgs: Message[] = (data.messages || []).map((m: any) => ({
+        id: m.message_id || crypto.randomUUID(),
+        role: m.role,
+        content: m.content,
+        time: new Date(m.timestamp).getTime(),
+        metadata: m.model ? {
+          model: m.model,
+          provider: m.provider || '',
+          route: m.route || '',
+          latency_ms: m.latency_ms || 0,
+          cost: m.cost || 0,
+        } : undefined,
+      }));
+      set({ messages: msgs, currentConversationId: conversationId, streamingMsgId: null });
+    } catch (e) {
+      console.error('Failed to load conversation messages:', e);
+    }
+  },
+
+  startNewChat: () => {
+    set({
+      currentConversationId: null,
+      messages: [{ id: 'welcome', role: 'assistant', content: 'Select a conversation or start a new chat.' }],
+      streamingMsgId: null,
+      workflowState: 'idle',
+      workflowStage: 'Ready',
+      tokenSpeed: '0.0 tok/s',
+      executionTime: '0.0s',
+      activeTools: 'None',
+      totalSessionCost: 0,
+      reasoningTrace: 'No active reasoning trace.',
+    });
   }
 }));

@@ -827,7 +827,16 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         _check_rate_limit("conversations")
         if _chat_handler is None:
             raise HTTPException(status_code=501, detail="Chat handler not available")
-        return await _chat_handler.get_conversations(limit=limit, offset=offset)
+        results = await _chat_handler.get_conversations(limit=limit, offset=offset)
+        formatted_results = [
+            {
+                "id": c.get("conversation_id", ""),
+                "title": c.get("title", ""),
+                "updated_at": c.get("created_at", ""),
+            }
+            for c in results
+        ]
+        return {"conversations": formatted_results}
 
     @app.get("/api/v1/chat/history")
     async def chat_history(
@@ -840,9 +849,10 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         _check_rate_limit("history")
         if _chat_handler is None:
             raise HTTPException(status_code=501, detail="Chat handler not available")
-        return await _chat_handler.get_history(
+        results = await _chat_handler.get_history(
             conversation_id=conversation_id, limit=limit, offset=offset
         )
+        return {"messages": results}
 
     @app.get("/api/v1/chat/message/{message_id}")
     async def chat_message(

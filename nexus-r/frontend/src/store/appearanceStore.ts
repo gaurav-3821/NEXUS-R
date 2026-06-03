@@ -7,6 +7,7 @@ export interface AppearanceState {
   highContrast: boolean;
   reduceAnimations: boolean;
   sidebarTransparency: boolean;
+  showResponseMetadata: boolean;
 }
 
 export interface AppearanceActions {
@@ -54,6 +55,7 @@ const defaultState: AppearanceState = {
   highContrast: false,
   reduceAnimations: false,
   sidebarTransparency: true,
+  showResponseMetadata: false,
 };
 
 const applyThemeToDOM = (themeMode: 'light' | 'dark' | 'system') => {
@@ -211,7 +213,8 @@ export const useAppearanceStore = create<AppearanceStore>((set, get) => ({
                 compactMode: data.compactMode,
                 highContrast: data.highContrast,
                 reduceAnimations: data.reduceAnimations,
-                sidebarTransparency: data.sidebarTransparency
+                sidebarTransparency: data.sidebarTransparency,
+                showResponseMetadata: data.showResponseMetadata ?? false
               });
               alert('Theme imported successfully!');
             } catch (err) {

@@ -575,14 +575,25 @@ When you output a `browser_action`, the system will execute it on the page, chec
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'value': str(e)})}\n\n"
             return
-            
-        yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred})}\n\n"
+        latency = (datetime.now(timezone.utc) - started).total_seconds() * 1000
+        provider = preferred.split("/")[0] if "/" in preferred else "ollama"
+        route_name = routing.selected_tier.name if hasattr(routing.selected_tier, "name") else str(routing.selected_tier)
+        
+        metadata = {
+            "model": preferred,
+            "provider": provider,
+            "route": route_name,
+            "latency_ms": latency,
+            "cost": routing.cost_estimate
+        }
+        
+        yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred, 'metadata': metadata})}\n\n"
         
         await self._log_response({
             "content": full_text,
             "model": preferred,
             "cost": routing.cost_estimate,
-            "latency_ms": (datetime.now(timezone.utc) - started).total_seconds() * 1000,
+            "latency_ms": latency,
             "blocked": False,
         }, conversation_id, msg_id, ts)
 

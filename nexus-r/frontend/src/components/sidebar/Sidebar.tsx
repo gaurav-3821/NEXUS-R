@@ -7,7 +7,7 @@ import { UserProfileCard } from './UserProfileCard';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function Sidebar() {
-  const { conversations, currentConversationId, setCurrentConversation } = useAppStore();
+  const { conversations, currentConversationId, setCurrentConversation, loadConversationMessages, startNewChat } = useAppStore();
   const { sidebarTransparency, compactMode } = useAppearanceStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -27,7 +27,7 @@ export default function Sidebar() {
           <button 
             className={clsx("flex-1 primary-button rounded-full flex items-center justify-center gap-2", compactMode ? "py-1.5 px-3" : "py-2.5 px-4")}
             onClick={() => {
-              setCurrentConversation(null);
+              startNewChat();
               navigate('/');
             }}
           >
@@ -55,6 +55,7 @@ export default function Sidebar() {
               key={conv.id}
               onClick={() => {
                 setCurrentConversation(conv.id);
+                loadConversationMessages(conv.id);
                 navigate('/');
               }}
               className={clsx(

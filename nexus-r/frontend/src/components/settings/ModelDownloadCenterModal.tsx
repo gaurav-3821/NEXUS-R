@@ -19,17 +19,20 @@ const POPULAR_MODELS = [
 ];
 
 export function ModelDownloadCenterModal({ onClose }: ModelDownloadCenterModalProps) {
-  const { downloadJobs, localModels, loadDownloadJobs, startModelDownload, cancelModelDownload, loadModels } = useModelsStore();
+  const { downloadJobs, localModels, loadDownloadJobs, refreshLocalModels, startModelDownload, cancelModelDownload, loadModels } = useModelsStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [installingModelId, setInstallingModelId] = useState<string | null>(null);
 
   // Poll for download jobs while the modal is open
   useEffect(() => {
-    loadDownloadJobs(); // Initial load
-    const intervalId = setInterval(() => {
-      loadDownloadJobs();
-    }, 2000);
+    const poll = async () => {
+      await loadDownloadJobs();
+      await refreshLocalModels();
+    };
+    poll();
+    const intervalId = setInterval(poll, 2000);
     return () => clearInterval(intervalId);
-  }, [loadDownloadJobs]);
+  }, [loadDownloadJobs, refreshLocalModels]);
 
   const filteredModels = useMemo(() => {
     if (!searchQuery.trim()) return POPULAR_MODELS;
@@ -42,7 +45,11 @@ export function ModelDownloadCenterModal({ onClose }: ModelDownloadCenterModalPr
   }, [searchQuery]);
 
   const handleDownload = async (modelId: string) => {
-    await startModelDownload(modelId);
+    setInstallingModelId(modelId);
+    const success = await startModelDownload(modelId);
+    if (!success) {
+      setInstallingModelId(null);
+    }
   };
 
   const handleCancel = async (jobId: string) => {
@@ -111,11 +118,11 @@ export function ModelDownloadCenterModal({ onClose }: ModelDownloadCenterModalPr
         <div className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-[#0b1120]">
           
           {/* Active Downloads Section */}
-          {downloadJobs.length > 0 && (
+          {downloadJobs.filter(j => j.status !== 'completed' && j.status !== 'failed' && j.status !== 'cancelled').length > 0 && (
             <div className="mb-8">
               <h4 className="text-[13px] font-bold text-gray-400 uppercase tracking-wider mb-4 px-1">Active Downloads</h4>
               <div className="space-y-3">
-                {downloadJobs.map(job => (
+                {downloadJobs.filter(j => j.status !== 'completed' && j.status !== 'failed' && j.status !== 'cancelled').map(job => (
                   <div key={job.job_id} className="bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-900/30 rounded-xl p-4 shadow-sm relative overflow-hidden">
                     <div className="absolute top-0 left-0 h-1 bg-purple-500 transition-all duration-500 ease-in-out" style={{ width: `${job.progress_percent}%` }}></div>
                     <div className="flex items-center justify-between">
@@ -208,7 +215,7 @@ export function ModelDownloadCenterModal({ onClose }: ModelDownloadCenterModalPr
                       </div>
 
                       <div className="mt-auto">
-                        {isInstalled ? (
+                        {isInstalled || (activeJob?.status === 'completed') ? (
                           <button 
                             disabled
                             className="w-full py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 text-[13px] font-bold rounded-lg flex items-center justify-center gap-2 cursor-default"
@@ -222,12 +229,19 @@ export function ModelDownloadCenterModal({ onClose }: ModelDownloadCenterModalPr
                           >
                             <Download size={14} className="animate-bounce" /> {activeJob.progress_percent}%
                           </button>
+                        ) : installingModelId === model.id ? (
+                          <button 
+                            disabled
+                            className="w-full py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 text-[13px] font-bold rounded-lg flex items-center justify-center gap-2 cursor-wait"
+                          >
+                            <div className="w-3.5 h-3.5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" /> Installing...
+                          </button>
                         ) : (
                           <button 
                             onClick={() => handleDownload(model.id)}
-                            className="w-full py-2 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:text-gray-900 dark:hover:bg-gray-200 text-white text-[13px] font-bold rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm"
+                            className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-[13px] font-bold rounded-lg flex items-center justify-center gap-2 transition-all"
                           >
-                            <Download size={14} /> Download Model
+                            <Download size={14} /> Install
                           </button>
                         )}
                       </div>
