@@ -1,6 +1,7 @@
 import { useEffect, Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAppStore } from './store/useAppStore';
+import { useAppearanceStore } from './store/appearanceStore';
 import Sidebar from './components/sidebar/Sidebar';
 import { WS_URL } from './api/client';
 
@@ -16,10 +17,12 @@ const PlaceholderPage = lazy(() => import('./components/settings/PlaceholderPage
 
 function App() {
   const { isSidebarOpen, loadConversations } = useAppStore();
+  const loadSettings = useAppearanceStore((s) => s.loadSettings);
 
   useEffect(() => {
     loadConversations();
-  }, [loadConversations]);
+    loadSettings();
+  }, [loadConversations, loadSettings]);
 
   useEffect(() => {
     // Basic WebSocket connection setup mirroring the original app.js
