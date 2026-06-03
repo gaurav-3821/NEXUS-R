@@ -197,7 +197,7 @@ class ModelRegistry:
         self.refresh()
         
         # If the user explicitly provided a model name, let's honor it by creating an ephemeral provider!
-        if preferred and preferred not in ("byok", "local", "System Default"):
+        if preferred and preferred not in ("byok", "local", "System Default", "auto"):
             is_cloud = "/" in preferred and not preferred.startswith("ollama/")
             ephemeral_provider = StaticModelProvider(
                 name=preferred,
@@ -1139,22 +1139,18 @@ class ModelRegistry:
                 logger.debug("Anchor pre-warm failed (non-critical), will lazy-init on first request.")
 
     def _local_model_ready(self, model_name: str) -> bool:
-        # Cache result for 60 seconds to avoid blocking sync HTTP on every call
         import time as _time
         now = _time.time()
         if self._local_ready_cache is not None and now - self._local_ready_cache_time < 60.0:
             return self._local_ready_cache
         try:
-            response = httpx.get(f"{self.config.models.local_api_base}/api/tags", timeout=1.5)
-            response.raise_for_status()
-            payload = response.json()
-            models = payload.get("models", [])
-            result = len(models) > 0
+            available = self._get_available_models()
+            clean_name = model_name.replace("ollama/", "")
+            self._local_ready_cache = any(clean_name in m for m in available)
+            self._local_ready_cache_time = now
         except Exception:
-            result = shutil.which("ollama") is not None
-        self._local_ready_cache = result
-        self._local_ready_cache_time = now
-        return result
+            self._local_ready_cache = shutil.which("ollama") is not None
+        return self._local_ready_cache
 
     def _provider_model_name(self, model_name: str) -> str:
         return model_name.split("/", 1)[-1]
