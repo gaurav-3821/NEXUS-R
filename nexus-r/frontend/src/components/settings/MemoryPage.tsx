@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { useAppStore } from '../../store/useAppStore';
+import { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { getMemories, clearAllMemories } from '../../api/memory';
+import type { Memory, MemoryStats } from '../../api/memory';
 import { SettingsLayout } from '../layout/SettingsLayout';
 import { PageHeader } from '../ui/PageHeader';
 import { SearchBar } from '../ui/SearchBar';
@@ -14,8 +16,36 @@ import {
 } from 'lucide-react';
 
 export default function MemoryPage() {
-  const { setSettingsOpen } = useAppStore();
-  const [activeTab, setActiveTab] = useState('memory');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeTab = location.pathname.split('/').pop() || 'memory';
+  const [stats, setStats] = useState<MemoryStats | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchMemory = async () => {
+    setIsLoading(true);
+    try {
+      const res = await getMemories();
+      setStats(res.stats);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMemory();
+  }, []);
+
+  const handleClear = async () => {
+    try {
+      await clearAllMemories();
+      await fetchMemory();
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={18} /> },
@@ -45,7 +75,7 @@ export default function MemoryPage() {
     <SettingsNavigation 
       tabs={tabs} 
       activeTab={activeTab} 
-      onTabChange={setActiveTab} 
+      onTabChange={(id) => navigate(`/settings/${id}`)} 
       footerAction={
         <button className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
           <RefreshCw size={14} />
@@ -95,38 +125,19 @@ export default function MemoryPage() {
       </SettingsCard>
 
       {/* Top Memory Categories */}
-      <SettingsCard title="Top Memory Categories">
+      <SettingsCard title="Memory Categories">
         <div className="space-y-3 mb-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 font-medium">Coding Preferences</span>
-            <span className="font-semibold text-gray-900">560 memories</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 font-medium">Project Information</span>
-            <span className="font-semibold text-gray-900">420 memories</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 font-medium">User Preferences</span>
-            <span className="font-semibold text-gray-900">380 memories</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 font-medium">Key Decisions</span>
-            <span className="font-semibold text-gray-900">210 memories</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600 font-medium">Facts & Notes</span>
-            <span className="font-semibold text-gray-900">180 memories</span>
+            <span className="text-gray-600 font-medium">Total Memories</span>
+            <span className="font-semibold text-gray-900">{stats?.total_memories || 0}</span>
           </div>
         </div>
-        <button className="text-sm font-bold text-indigo-600 flex items-center gap-1 hover:text-indigo-700 transition-colors">
-          View all <ChevronRight size={14} />
-        </button>
       </SettingsCard>
 
       {/* Quick Actions */}
       <SettingsCard title="Quick Actions">
         <div className="space-y-2">
-          <button className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors text-left">
+          <button onClick={handleClear} className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors text-left">
             <Trash2 size={16} /> Clear All Memories
           </button>
           <button className="w-full py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors text-left">
@@ -159,13 +170,13 @@ export default function MemoryPage() {
   const footer = (
     <>
       <button 
-        onClick={() => setSettingsOpen(false)}
+        onClick={() => navigate('/')}
         className="px-6 py-2.5 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
       >
         Cancel
       </button>
       <button 
-        onClick={() => setSettingsOpen(false)}
+        onClick={() => navigate('/')}
         className="px-8 py-2.5 rounded-full text-sm font-semibold text-white bg-[#4f46e5] hover:bg-indigo-600 shadow-md flex items-center gap-2 transition-all"
       >
         <Settings size={16} />
@@ -180,7 +191,7 @@ export default function MemoryPage() {
       sidebar={sidebar}
       rightPanel={rightPanel}
       footer={footer}
-      isOverlay={true}
+      isOverlay={false}
     >
       <div className="animate-in fade-in slide-in-from-bottom-2 h-full flex flex-col w-full">
         
@@ -221,8 +232,7 @@ export default function MemoryPage() {
                 <DatabaseBackup size={14} />
               </div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Total Memories</p>
-              <h4 className="text-xl font-bold text-gray-900 mb-1">3,248</h4>
-              <p className="text-[11px] font-bold text-emerald-500">+128 this week</p>
+              <h4 className="text-xl font-bold text-gray-900 mb-1">{isLoading ? '...' : (stats?.total_memories || 0)}</h4>
             </div>
             
             <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -230,17 +240,7 @@ export default function MemoryPage() {
                 <Server size={14} />
               </div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Memory Size</p>
-              <h4 className="text-xl font-bold text-gray-900 mb-1">128 MB</h4>
-              <p className="text-[11px] font-bold text-gray-500">8% of limit used</p>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-              <div className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center mb-3">
-                <MessageSquare size={14} />
-              </div>
-              <p className="text-xs font-semibold text-gray-500 mb-1">Conversations</p>
-              <h4 className="text-xl font-bold text-gray-900 mb-1">512</h4>
-              <p className="text-[11px] font-bold text-emerald-500">+23 this week</p>
+              <h4 className="text-xl font-bold text-gray-900 mb-1">{isLoading ? '...' : `${((stats?.total_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB`}</h4>
             </div>
 
             <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
@@ -248,8 +248,15 @@ export default function MemoryPage() {
                 <Clock size={14} />
               </div>
               <p className="text-xs font-semibold text-gray-500 mb-1">Last Updated</p>
-              <h4 className="text-xl font-bold text-gray-900 mb-1">2 min ago</h4>
-              <p className="text-[11px] font-bold text-gray-500">Manual sync</p>
+              <h4 className="text-[13px] font-bold text-gray-900 mb-1">{isLoading ? '...' : (stats?.newest_memory_date ? new Date(stats.newest_memory_date).toLocaleDateString() : 'Never')}</h4>
+            </div>
+            
+            <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+              <div className="w-6 h-6 rounded-md bg-indigo-50 text-indigo-500 flex items-center justify-center mb-3">
+                <Clock size={14} />
+              </div>
+              <p className="text-xs font-semibold text-gray-500 mb-1">Oldest Memory</p>
+              <h4 className="text-[13px] font-bold text-gray-900 mb-1">{isLoading ? '...' : (stats?.oldest_memory_date ? new Date(stats.oldest_memory_date).toLocaleDateString() : 'Never')}</h4>
             </div>
           </div>
 
@@ -342,7 +349,7 @@ export default function MemoryPage() {
                 <p className="text-xs font-medium text-gray-500 mt-2">1.37 GB available</p>
               </div>
               <div className="flex flex-col items-end gap-2 shrink-0">
-                <span className="text-[13px] font-bold text-gray-900">128 MB <span className="text-gray-400 font-medium">/ 1.5 GB (8%)</span></span>
+                <span className="text-[13px] font-bold text-gray-900">{((stats?.total_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB <span className="text-gray-400 font-medium">/ 1.5 GB</span></span>
                 <button className="px-4 py-2 border border-indigo-200 text-indigo-700 rounded-lg text-sm font-semibold hover:bg-indigo-50 transition-colors shadow-sm whitespace-nowrap">
                   Manage Storage
                 </button>

@@ -188,10 +188,27 @@ class ModelRegistry:
 
     def provider_chain(self, preferred: str) -> list[StaticModelProvider]:
         self.refresh()
-        if preferred == "byok":
-            chain = [self.byok, self.local]
+        
+        # If the user explicitly provided a model name, let's honor it by creating an ephemeral provider!
+        if preferred and preferred not in ("byok", "local", "System Default"):
+            is_cloud = "/" in preferred and not preferred.startswith("ollama/")
+            ephemeral_provider = StaticModelProvider(
+                name=preferred,
+                is_available=True,
+                estimated_cost=0.01,
+                provider_kind="byok" if is_cloud else "local",
+            )
+            # Create a chain starting with the explicit request, then falling back
+            if is_cloud:
+                chain = [ephemeral_provider, self.local, self.byok]
+            else:
+                chain = [ephemeral_provider, self.byok, self.local]
         else:
-            chain = [self.local, self.byok]
+            if preferred == "byok":
+                chain = [self.byok, self.local]
+            else:
+                chain = [self.local, self.byok]
+                
         deduped: list[StaticModelProvider] = []
         seen: set[str] = set()
         for provider in chain:
@@ -703,13 +720,20 @@ class ModelRegistry:
             except Exception:
                 api_base = self.config.models.local_api_base
 
-            if "auto" in self.config.models.local_model.lower():
-                provider.name = self._get_dynamic_local_model(prompt)
-            else:
-                provider.name = self.config.models.local_model
+            if provider is self.local:
+                if "auto" in self.config.models.local_model.lower():
+                    provider.name = self._get_dynamic_local_model(prompt)
+                else:
+                    provider.name = self.config.models.local_model
                 if not provider.name.startswith("ollama/"):
                     provider.name = f"ollama/{provider.name}"
                 self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
+            elif provider.provider_kind == "local":
+                if not provider.name.startswith("ollama/"):
+                    provider.name = f"ollama/{provider.name}"
+                self._last_model_reason = "User Requested Model → " + provider.name.replace("ollama/", "")
+            
+            logger.info(f"Requested Model: {provider.name} | Actual Model: {provider.name}")
             return await self._litellm_completion(
                 provider=provider,
                 prompt=prompt,
@@ -726,6 +750,9 @@ class ModelRegistry:
                 failure_class="missing_credentials", retryable=False,
                 fallback_decision="skip_chain_if_exhausted",
             )
+            
+        logger.info(f"Requested Model: {provider.name} | Actual Model: {provider.name}")
+        
         return await self._litellm_completion(
             provider=provider,
             prompt=prompt,
@@ -755,6 +782,8 @@ class ModelRegistry:
                     failure_class="missing_credentials", retryable=False,
                     fallback_decision="skip_chain_if_exhausted",
                 )
+            
+            logger.info(f"Requested Model: {provider.name} | Actual Model: {provider.name}")
                 
             msg_content = prompt
             if images:
@@ -791,13 +820,20 @@ class ModelRegistry:
                 # If streaming fails, we could potentially retry, but we'll surface the error
                 raise self._classify_provider_error(e, provider)
             return
-        if "auto" in self.config.models.local_model.lower():
-            provider.name = self._get_dynamic_local_model(prompt)
-        else:
-            provider.name = self.config.models.local_model
+        if provider is self.local:
+            if "auto" in self.config.models.local_model.lower():
+                provider.name = self._get_dynamic_local_model(prompt)
+            else:
+                provider.name = self.config.models.local_model
             if not provider.name.startswith("ollama/"):
                 provider.name = f"ollama/{provider.name}"
             self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
+        elif provider.provider_kind == "local":
+            if not provider.name.startswith("ollama/"):
+                provider.name = f"ollama/{provider.name}"
+            self._last_model_reason = "User Requested Model → " + provider.name.replace("ollama/", "")
+        
+        logger.info(f"Requested Model: {provider.name} | Actual Model: {provider.name}")
         
         try:
             BackendManager.get_instance().ensure_running()
@@ -811,6 +847,7 @@ class ModelRegistry:
             "messages": [{"role": "user", "content": prompt}],
             "stream": True,
             "options": {"temperature": 0},
+            "keep_alive": -1,
         }
         timeout = httpx.Timeout(self.config.models.stream_timeout_seconds)
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -861,15 +898,19 @@ class ModelRegistry:
             for img in images:
                 msg_content.append({"type": "image_url", "image_url": {"url": img}})
                 
+        kwargs = {
+            "model": provider.name,
+            "messages": [{"role": "user", "content": msg_content}],
+            "api_key": api_key,
+            "api_base": api_base,
+            "timeout": self.config.models.provider_timeout_seconds,
+            "temperature": 0,
+        }
+        if provider.provider_kind == "local":
+            kwargs["extra_body"] = {"keep_alive": -1}
+
         try:
-            response = await acompletion(
-                model=provider.name,
-                messages=[{"role": "user", "content": msg_content}],
-                api_key=api_key,
-                api_base=api_base,
-                timeout=self.config.models.provider_timeout_seconds,
-                temperature=0,
-            )
+            response = await acompletion(**kwargs)
         except asyncio.TimeoutError:
             raise self._classify_provider_error(asyncio.TimeoutError(), provider)
         except httpx.TimeoutException as exc:

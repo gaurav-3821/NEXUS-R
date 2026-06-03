@@ -1,9 +1,9 @@
 @import "tailwindcss";
-
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
 @layer base {
   body {
-    background-color: #f8fafc;
-    color: #111827;
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100;
     font-family: 'Inter', sans-serif;
     margin: 0;
     padding: 0;
@@ -39,27 +39,27 @@
   }
   
   .primary-button {
-    background-color: #4f46e5;
+    background-color: rgb(var(--accent-500));
     color: white;
     transition: all 0.2s;
     font-size: 0.875rem;
     font-weight: 500;
   }
   .primary-button:hover {
-    background-color: #4338ca;
+    background-color: rgb(var(--accent-600));
   }
   
   .glass-button {
-    background-color: #ffffff;
-    border: 1px solid #e5e7eb;
-    color: #374151;
+    background-color: rgb(var(--accent-50));
+    border: 1px solid rgb(var(--accent-200));
+    color: rgb(var(--accent-700));
     transition: all 0.2s;
     font-size: 0.875rem;
     font-weight: 500;
     border-radius: 9999px; /* Pill shape is standard in the new design */
   }
   .glass-button:hover {
-    background-color: #f3f4f6;
+    background-color: rgb(var(--accent-100));
   }
 }
 
@@ -69,3 +69,58 @@
   display: flex;
   flex-direction: column;
 }
+
+/* Reduce Animations Mode */
+html.reduce-animations *,
+html.reduce-animations *::before,
+html.reduce-animations *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Disable scale/translate hover effects safely */
+html.reduce-animations *:hover {
+  scale: 1 !important;
+}
+
+/* High Contrast Mode */
+html.high-contrast .text-gray-400,
+html.high-contrast .text-gray-500,
+html.high-contrast .text-gray-600 {
+  color: #111827 !important;
+}
+
+html.high-contrast .border-gray-100,
+html.high-contrast .border-gray-200,
+html.high-contrast .border-gray-300 {
+  border-color: #4b5563 !important;
+}
+
+/* Button contrast */
+html.high-contrast button.glass-button,
+html.high-contrast .bg-white.border {
+  border-width: 2px !important;
+  border-color: #374151 !important;
+  color: #111827 !important;
+  font-weight: 700 !important;
+}
+
+html.high-contrast .primary-button {
+  box-shadow: inset 0 0 0 2px #ffffff, 0 0 0 2px #000000 !important;
+  font-weight: 700 !important;
+}
+
+html.high-contrast .text-accent-500,
+html.high-contrast .text-accent-600 {
+  color: rgb(var(--accent-800)) !important;
+  font-weight: 700 !important;
+}
+
+html.high-contrast .bg-accent-50 {
+  background-color: rgb(var(--accent-200)) !important;
+  border: 1px solid rgb(var(--accent-800)) !important;
+  color: rgb(var(--accent-900)) !important;
+}
+

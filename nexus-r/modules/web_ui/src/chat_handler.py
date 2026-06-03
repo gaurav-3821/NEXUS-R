@@ -51,14 +51,19 @@ class ChatHandler:
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._paused_browsers: dict[str, Any] = {}
 
-    async def send_message(
+
+    async def _prepare_intent(
         self,
         message: str,
         model: str | None = None,
         conversation_id: str | None = None,
         telemetry: dict[str, Any] | None = None,
         images: list[str] | None = None,
-    ) -> dict[str, Any]:
+        stream_callback=None,
+    ) -> tuple[dict | None, IntentResult | None, Any | None, str, str, str, str]:
+        if model in ("Auto Router", "System Default"):
+            model = None
+            
         if not conversation_id:
             conversation_id = "conv_" + str(uuid4())
             await self.event_store.append(Event(
@@ -98,7 +103,7 @@ class ChatHandler:
                 "cost": 0.0,
                 "latency_ms": 1.0,
                 "timestamp": ts,
-            }
+            }, None, None, msg_id, ts, "calculator", conversation_id
 
         # 2. Check Memory Commands
         memory_intent = self.memory_parser.parse(message)
@@ -133,7 +138,7 @@ class ChatHandler:
                 "cost": 0.0,
                 "latency_ms": 1.0,
                 "timestamp": ts,
-            }
+            }, None, None, msg_id, ts, "memory_parser", conversation_id
 
         # 2.5 Check Browser Intents
         import re
@@ -154,7 +159,6 @@ class ChatHandler:
                 
         elif search_match:
             query = search_match.group(1).strip()
-            # Clean enclosing quotes (e.g. "latest Python news" -> latest Python news)
             if (query.startswith('"') and query.endswith('"')) or (query.startswith("'") and query.endswith("'")):
                 query = query[1:-1].strip()
             elif query.endswith('"') or query.endswith("'"):
@@ -169,7 +173,6 @@ class ChatHandler:
                 results = search_res.get("results", [])
                 images = image_res.get("images", []) if image_res.get("success") else []
                 
-                # We will broadcast this after the msg_id is generated
                 self._pending_search_broadcast = {
                     "results": results,
                     "images": images,
@@ -194,13 +197,11 @@ class ChatHandler:
         
         if not action_desc and is_forecast_query:
             try:
-                # 1. Parse horizon (e.g. next 5 values, 8 steps)
                 horizon = 5
                 horizon_match = re.search(r'(?:next|horizon|predict|steps)\s+(\d+)', message, re.IGNORECASE)
                 if horizon_match:
                     horizon = int(horizon_match.group(1))
                 
-                # 2. Extract sequence numbers (try brackets/parents first, then fallback)
                 seq_match = re.search(r'(?:forecast|predict|timesfm)[^\[\(]*[\[\(]([\d\s\.,\-]+)[\]\)]', message, re.IGNORECASE)
                 if not seq_match:
                     seq_match = re.search(r'(?:forecast|predict|timesfm)\s+(?:the\s+)?(?:next\s+\d+\s+)?(?:values|points|data|sequence)?\s*(?:for|of|sequence)?\s*([\d\s\.,\-]+)', message, re.IGNORECASE)
@@ -304,7 +305,7 @@ class ChatHandler:
                     "blocked": True,
                 }
                 await self._log_response(result, conversation_id, msg_id, ts)
-                return result
+                return result, None, None, msg_id, ts, "", conversation_id
 
         # 3. Preference Engine Injection
         prefs = self.preference_engine.get_system_prompt_additions()
@@ -413,14 +414,28 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 raise HTTPException(status_code=503, detail="No AI models are currently available. Please start Ollama or configure an API key in the settings.")
             raise
         
-        started = datetime.now(timezone.utc)
-        
         # 4.5 Eye of the Blind: Vision Fallback
         if intent.images and not self.router.registry.is_vision_model(preferred):
             vision_fallback = "qwen2.5-vl:7b"
-            await self._ensure_ollama_model(vision_fallback)
             
-            # Use LiteLLM acompletion directly for the vision fallback
+            try:
+                await self._ensure_ollama_model(vision_fallback)
+            except RuntimeError as e:
+                err_msg = str(e)
+                msg_id = str(uuid4())
+                ts = datetime.now(timezone.utc).isoformat()
+                return {
+                    "message_id": msg_id,
+                    "conversation_id": conversation_id,
+                    "content": err_msg,
+                    "role": "assistant",
+                    "model": "system",
+                    "cost": 0.0,
+                    "latency_ms": 1.0,
+                    "timestamp": ts,
+                    "blocked": True,
+                }, None, None, msg_id, ts, "system", conversation_id
+            
             from litellm import acompletion
             vision_prompt = "Please describe this image in detail, specifically focusing on information that would help answer the following user query: " + intent.raw_input
             
@@ -435,10 +450,13 @@ When you output a `browser_action`, the system will execute it on the page, chec
                         "message_id": "sys_vision_" + str(uuid4()),
                         "conversation_id": conversation_id,
                         "content": "Running Eye of the Blind vision fallback...",
-                        "timestamp": started.isoformat(),
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
                         "status": "processing",
                         "streaming": True,
                     })
+                if stream_callback:
+                    import json
+                    await stream_callback(f"data: {json.dumps({'type': 'status', 'value': 'analyzing image'})}\n\n")
                     
                 vision_res = await acompletion(
                     model="ollama/" + vision_fallback,
@@ -447,11 +465,8 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 )
                 vision_desc = vision_res.choices[0].message.content
                 
-                # Append description to primary intent
                 desc_block = f"\n\n[SYSTEM BACKGROUND ACTION: Image visually analyzed by {vision_fallback}]\n[IMAGE DESCRIPTION]\n{vision_desc}\n[END IMAGE DESCRIPTION]\n"
                 intent.normalized_input += desc_block
-                
-                # Nullify images so the blind model doesn't choke
                 intent.images = None
                 
             except Exception as e:
@@ -459,6 +474,24 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 intent.normalized_input += "\n\n[SYSTEM BACKGROUND ACTION: Vision fallback failed to describe the image.]"
                 intent.images = None
 
+        return None, intent, routing, msg_id, ts, preferred, conversation_id
+
+
+    async def send_message(
+        self,
+        message: str,
+        model: str | None = None,
+        conversation_id: str | None = None,
+        telemetry: dict[str, Any] | None = None,
+        images: list[str] | None = None,
+    ) -> dict[str, Any]:
+        early_res, intent, routing, msg_id, ts, preferred, conversation_id = await self._prepare_intent(
+            message=message, model=model, conversation_id=conversation_id, telemetry=telemetry, images=images
+        )
+        if early_res is not None:
+            return early_res
+            
+        started = datetime.now(timezone.utc)
         if self.ws_handler:
             task = asyncio.create_task(self._stream_response(
                 conversation_id=conversation_id,
@@ -483,37 +516,107 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 routing.selected_tier, started,
             )
             
-            # 5. Pattern Extraction for cloud responses
-            # Note: T2 could be local or cloud depending on config, but if it's BYOK, extract
             tier_val = getattr(routing.selected_tier, "value", routing.selected_tier)
             if "byok" in routing.selected_model or "cloud" in routing.selected_model or (isinstance(tier_val, int) and tier_val >= 3):
                 self.pattern_store.extract_and_save(message, res.get("content", ""))
                 
-            # Memory Extraction
             asyncio.create_task(self.memory_engine.extract_memories(message, res.get("content", ""), conversation_id=conversation_id))
                 
-            # 6. Behavior Tracker
             if telemetry:
                 for k, v in telemetry.items():
                     self.behavior_tracker.record_signal(k, v)
                     
             return res
 
-    
+    async def stream_message(
+        self,
+        message: str,
+        model: str | None = None,
+        conversation_id: str | None = None,
+        telemetry: dict[str, Any] | None = None,
+        images: list[str] | None = None,
+    ):
+        import json
+        
+        async def stream_cb(val: str):
+            yield val
+
+        queue = asyncio.Queue()
+        async def mock_cb(val: str):
+            await queue.put(val)
+
+        # We cannot easily yield from the callback, so we'll just let prepare_intent run
+        # and if we needed to yield vision statuses, we'll collect them in a queue, but _prepare_intent is blocking.
+        # So we skip real-time vision callback for now in stream_message or handle it differently.
+        # For simplicity, we just pass None to stream_callback right now.
+        
+        early_res, intent, routing, msg_id, ts, preferred, conversation_id = await self._prepare_intent(
+            message=message, model=model, conversation_id=conversation_id, telemetry=telemetry, images=images
+        )
+
+        if early_res is not None:
+            # Yield early response as a stream
+            yield f"data: {json.dumps({'type': 'status', 'value': 'routing'})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'value': early_res.get('content', '')})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred})}\n\n"
+            return
+
+        yield f"data: {json.dumps({'type': 'status', 'value': 'routing'})}\n\n"
+        yield f"data: {json.dumps({'type': 'status', 'value': 'thinking'})}\n\n"
+        
+        started = datetime.now(timezone.utc)
+        full_text = ""
+        try:
+            async for chunk in self.router.stream(intent, preferred):
+                text = chunk.get("text", "")
+                if text:
+                    full_text += text
+                    yield f"data: {json.dumps({'type': 'token', 'value': text})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'value': str(e)})}\n\n"
+            return
+            
+        yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred})}\n\n"
+        
+        await self._log_response({
+            "content": full_text,
+            "model": preferred,
+            "cost": routing.cost_estimate,
+            "latency_ms": (datetime.now(timezone.utc) - started).total_seconds() * 1000,
+            "blocked": False,
+        }, conversation_id, msg_id, ts)
+
+        tier_val = getattr(routing.selected_tier, "value", routing.selected_tier)
+        if "byok" in routing.selected_model or "cloud" in routing.selected_model or (isinstance(tier_val, int) and tier_val >= 3):
+            self.pattern_store.extract_and_save(message, full_text)
+            
+        asyncio.create_task(self.memory_engine.extract_memories(message, full_text, conversation_id=conversation_id))
+            
+        if telemetry:
+            for k, v in telemetry.items():
+                self.behavior_tracker.record_signal(k, v)
     async def _ensure_ollama_model(self, model_name: str) -> None:
         import httpx
         try:
-            # Check if exists
-            res = httpx.get("http://127.0.0.1:11434/api/tags", timeout=2.0)
-            if res.status_code == 200:
-                tags = [m["name"] for m in res.json().get("models", [])]
-                if any(model_name in t or t in model_name for t in tags):
-                    return # Exists
-            # Try to pull
-            logger.info(f"Auto-pulling {model_name} for vision fallback...")
-            httpx.post("http://127.0.0.1:11434/api/pull", json={"name": model_name}, timeout=300.0)
+            async with httpx.AsyncClient() as client:
+                # 1. Ping check
+                try:
+                    res = await client.get("http://127.0.0.1:11434/", timeout=0.5)
+                except (httpx.ConnectError, httpx.TimeoutException):
+                    raise RuntimeError("Ollama is not running or unavailable. Please start Ollama to use vision fallback.")
+                
+                # 2. Model verification
+                res = await client.get("http://127.0.0.1:11434/api/tags", timeout=2.0)
+                if res.status_code == 200:
+                    tags = [m["name"] for m in res.json().get("models", [])]
+                    if any(model_name in t or t in model_name for t in tags):
+                        return # Exists
+                        
+                # 3. Fail fast
+                raise RuntimeError(f"Vision fallback model '{model_name}' is not installed. Please download it via the Download Center before attaching images.")
         except Exception as e:
             logger.error(f"Failed to ensure ollama model {model_name}: {e}")
+            raise e
 
     async def interrupt_message(self, message_id: str) -> bool:
         task = self._active_tasks.get(message_id)

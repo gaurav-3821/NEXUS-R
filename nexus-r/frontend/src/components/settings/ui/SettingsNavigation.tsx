@@ -25,23 +25,23 @@ export function SettingsNavigation({ tabs, activeTab, onTabChange, footerAction 
           className={clsx(
             "flex items-center justify-between px-4 py-3 mb-1 rounded-xl text-[15px] font-semibold transition-all group",
             activeTab === tab.id 
-              ? "bg-indigo-50 text-indigo-600" 
-              : "text-gray-700 hover:bg-gray-50"
+              ? "bg-accent-50 dark:bg-accent-500/20 text-accent-600 dark:text-accent-400" 
+              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800"
           )}
         >
           <div className="flex items-center gap-4">
-            <span className={activeTab === tab.id ? "text-indigo-600" : "text-gray-400 group-hover:text-gray-600"}>
+            <span className={clsx("transition-colors", activeTab === tab.id ? "text-accent-600 dark:text-accent-400" : "text-gray-400 dark:text-gray-500 dark:text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300")}>
               {tab.icon}
             </span>
             {tab.label}
           </div>
           {tab.badge && (
-            <span className="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+            <span className="bg-accent-100 dark:bg-accent-500/30 text-accent-600 dark:text-accent-400 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
               {tab.badge}
             </span>
           )}
           {activeTab === tab.id && !tab.badge && (
-            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0"></div>
+            <div className="w-1.5 h-1.5 rounded-full bg-accent-600 dark:bg-accent-400 shrink-0"></div>
           )}
         </button>
       ))}

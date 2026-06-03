@@ -16,7 +16,7 @@ export function StatusBadge({ status, label, className, ...props }: StatusBadgeP
 
   const statusText = {
     online: "text-green-600",
-    offline: "text-gray-500",
+    offline: "text-gray-500 dark:text-gray-400",
     pending: "text-amber-600",
     error: "text-red-600"
   };

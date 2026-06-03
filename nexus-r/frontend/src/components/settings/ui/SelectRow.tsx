@@ -17,11 +17,11 @@ export function SelectRow({ label, description, options, className, defaultValue
         {icon && <div className="text-gray-400">{icon}</div>}
         <div>
           <div className="text-[15px] font-semibold text-gray-800">{label}</div>
-          {description && <div className="text-[13px] text-gray-500 mt-0.5">{description}</div>}
+          {description && <div className="text-[13px] text-gray-500 dark:text-gray-400 mt-0.5">{description}</div>}
         </div>
       </div>
       <select 
-        className="w-48 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-indigo-400 cursor-pointer"
+        className="w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-accent-400 cursor-pointer"
         defaultValue={defaultValue}
         onChange={(e) => onChange?.(e.target.value)}
         {...props}

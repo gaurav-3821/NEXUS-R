@@ -227,6 +227,22 @@ class ModelManager:
             if self.router:
                 self._hot_reload_car()
 
+    async def warmup_local_model(self, model: str) -> None:
+        try:
+            payload = {
+                "model": model.replace("ollama/", "") if model.startswith("ollama/") else model,
+                "messages": [{"role": "user", "content": ""}],
+                "keep_alive": -1,
+                "stream": False
+            }
+            async with httpx.AsyncClient(timeout=1.0) as client:
+                await client.post(
+                    f"{self.config.models.local_api_base.rstrip('/')}/api/chat",
+                    json=payload
+                )
+        except Exception:
+            pass  # Warmup is best-effort
+
     async def list_ollama_models(self) -> list[dict[str, Any]]:
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -485,14 +501,6 @@ class ModelManager:
             return
         job.status = "downloading"
         job.started_at = time.time()
-
-        estimated_gb = MODEL_SIZES.get(short_name, 0)
-        if estimated_gb:
-            download_speed_mbps = 50
-            estimated_seconds = (estimated_gb * 1024) / 6
-            mins = int(estimated_seconds / 60)
-            job.message = f"Downloading {short_name} (~{estimated_gb}GB, ~{mins} min at 50 Mbps)"
-
         try:
             proc = await asyncio.create_subprocess_exec(
                 "ollama", "pull", short_name,
@@ -500,66 +508,80 @@ class ModelManager:
                 stderr=asyncio.subprocess.STDOUT,
             )
             job.process = proc
-
-            # Patterns: "45%" or "45%|████▌     | 1.2G/2.7G  5.2MB/s"
+            
+            # Matches formats like: 100% ▕██████▏ 4.7 GB or 45% |██| 1.2G/2.7G 5.2MB/s
             pct_pat = re.compile(r"(\d+)%")
-            progress_pat = re.compile(r"(\d+)%\s*\|.*?\|\s*([\d.]+)([GTMKB])/([\d.]+)([GTMKB])\s+([\d.]+)([GTMKB])/s")
+            progress_pat = re.compile(r"(\d+)%\s*.*?([\d.]+)\s*([KMG]?B)\s*/\s*([\d.]+)\s*([KMG]?B)(?:\s*([\d.]+)\s*([KMG]?B)/s)?", re.IGNORECASE)
 
             _UNIT_MAP = {"B": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
             def _parse_bytes(val: float | int, unit: str) -> int:
+                if not unit: return int(val)
                 return int(val * _UNIT_MAP.get(unit[0].upper(), 1))
 
             stage = "connecting"
+            buffer = b""
+            
             while True:
                 if job.cancelled:
                     break
-                line = await proc.stdout.readline()
-                if not line:
+                
+                chunk = await proc.stdout.read(128)
+                if not chunk:
                     break
-                text = line.decode("utf-8", errors="replace").strip()
-                if not text:
-                    continue
+                buffer += chunk
+                
+                if len(buffer) > 4096:
+                    buffer = buffer[-4096:]
+                
+                text = buffer.decode("utf-8", errors="replace")
 
-                if "pulling manifest" in text:
-                    stage = "manifest"
-                    job.message = f"Fetching manifest for {short_name}..."
-                elif "verifying sha256" in text:
-                    stage = "verify"
-                    job.message = "Verifying checksum..."
+                if "success" in text:
+                    job.message = f"{short_name} downloaded successfully"
                 elif "writing manifest" in text:
                     stage = "write"
                     job.message = "Writing manifest..."
-                elif "success" in text:
-                    job.message = f"{short_name} downloaded successfully"
-                else:
-                    # Try detailed progress first
-                    pm = progress_pat.search(text)
-                    if pm:
-                        pct = int(pm.group(1))
-                        downloaded = _parse_bytes(float(pm.group(2)), pm.group(3))
-                        total = _parse_bytes(float(pm.group(4)), pm.group(5))
+                elif "verifying sha256" in text:
+                    stage = "verify"
+                    job.message = "Verifying checksum..."
+                elif "pulling manifest" in text:
+                    stage = "manifest"
+                    job.message = f"Fetching manifest for {short_name}..."
+
+                matches = list(progress_pat.finditer(text))
+                if matches:
+                    pm = matches[-1]
+                    pct = int(pm.group(1))
+                    downloaded = _parse_bytes(float(pm.group(2)), pm.group(3))
+                    total = _parse_bytes(float(pm.group(4)), pm.group(5))
+                    
+                    speed_mbps = 0.0
+                    if pm.group(6) and pm.group(7):
                         speed = float(pm.group(6))
-                        speed_unit = pm.group(7)[0].upper()
+                        speed_unit = pm.group(7)
                         speed_bps = _parse_bytes(speed, speed_unit)
                         speed_mbps = round(speed_bps / (1024 * 1024), 1)
+                        
+                    job.progress = min(pct, 99)
+                    job.progress_percent = float(pct)
+                    job.downloaded_bytes = downloaded
+                    job.total_bytes = total
+                    job.speed_mbps = speed_mbps
+                    job.last_progress_at = time.time()
+                    msg = f"Downloading {short_name}... {pct}%"
+                    if speed_mbps > 0:
+                        msg += f" ({speed_mbps} MB/s)"
+                    job.message = msg
+                else:
+                    matches_pct = list(pct_pat.finditer(text))
+                    if matches_pct:
+                        pct = int(matches_pct[-1].group(1))
                         job.progress = min(pct, 99)
                         job.progress_percent = float(pct)
-                        job.downloaded_bytes = downloaded
-                        job.total_bytes = total
-                        job.speed_mbps = speed_mbps
                         job.last_progress_at = time.time()
-                        job.message = f"Downloading {short_name}... {pct}% ({speed_mbps} MB/s)"
-                    else:
-                        m = pct_pat.search(text)
-                        if m:
-                            pct = int(m.group(1))
-                            job.progress = min(pct, 99)
-                            job.progress_percent = float(pct)
-                            job.last_progress_at = time.time()
-                            job.message = f"Downloading {short_name}... {pct}%"
-                        elif "pulling" in text:
-                            stage = "pulling"
-                            job.message = f"Pulling layers for {short_name}..."
+                        job.message = f"Downloading {short_name}... {pct}%"
+                    elif "pulling" in text and stage != "manifest":
+                        stage = "pulling"
+                        job.message = f"Pulling layers for {short_name}..."
 
             await proc.wait()
             if job.cancelled:
@@ -575,17 +597,17 @@ class ModelManager:
                 logger.info("Download completed: %s (%ds)", short_name, elapsed)
             else:
                 job.status = "failed"
-                # Try to read remaining stderr for error details
                 try:
                     remaining = await asyncio.wait_for(proc.stderr.read(), timeout=2) if proc.stderr else b""
-                    if remaining:
-                        job.error = remaining.decode("utf-8", errors="replace")[:500]
+                    err_msg = remaining.decode(errors="replace").strip()
+                    if err_msg:
+                        job.error = err_msg
+                    else:
+                        job.error = "Ollama process exited with an error"
                 except Exception:
-                    pass
-                if not job.error:
-                    job.error = f"ollama pull exited with code {proc.returncode}"
-                job.message = f"Download failed: {job.error[:200]}"
-                logger.warning("Download failed: %s, code=%d, error=%s", short_name, proc.returncode, job.error[:200])
+                    job.error = "Unknown error occurred"
+                job.message = f"Download failed: {job.error}"
+                logger.error("Download failed for %s: %s", short_name, job.error)
         except asyncio.CancelledError:
             job.status = "cancelled"
             job.message = "Download cancelled"
@@ -740,23 +762,51 @@ class ModelManager:
         except FileNotFoundError:
             return {"installed": False, "model": short_name, "error": "ollama not found"}
 
-    async def configure(self, local_model: str | None = None,
-                        cloud_provider: str | None = None,
-                        api_key: str | None = None) -> dict[str, Any]:
-        errors = []
-        warnings = []
+    async def configure(
+        self,
+        local_model: str | None = None,
+        cloud_provider: str | None = None,
+        api_key: str | None = None,
+        routing_profile: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         try:
-            if local_model:
-                check = await self.validate_local_model(local_model)
+            saved = self.load_saved_config()
+            cfg_updates: dict[str, Any] = {}
+            if local_model is not None:
+                cfg_updates["local_model"] = local_model
+            else:
+                cfg_updates["local_model"] = saved.get("local_model", self.config.models.local_model)
+
+            if cloud_provider is not None:
+                cfg_updates["cloud_provider"] = cloud_provider
+            else:
+                cfg_updates["cloud_provider"] = saved.get("cloud_provider", "none")
+                
+            if routing_profile is not None:
+                cfg_updates["routingProfile"] = routing_profile
+            else:
+                if "routingProfile" in saved:
+                    cfg_updates["routingProfile"] = saved["routingProfile"]
+
+            errors = []
+            warnings = []
+            key_valid = True
+            
+            # Use variables from cfg_updates for logic below
+            local_model_val = cfg_updates["local_model"]
+            cloud_provider_val = cfg_updates["cloud_provider"]
+
+            if local_model_val:
+                check = await self.validate_local_model(local_model_val)
                 if not check.get("installed"):
-                    if local_model.startswith("lmstudio/"):
-                        errors.append(f"Model {local_model} not found in LM Studio. Load it in LM Studio UI first.")
+                    if local_model_val.startswith("lmstudio/"):
+                        errors.append(f"Model {local_model_val} not found in LM Studio. Load it in LM Studio UI first.")
                     else:
-                        dl = await self.download_model(local_model)
+                        dl = await self.download_model(local_model_val)
                         if dl.get("success"):
-                            logger.info("Successfully pulled model %s", local_model)
+                            logger.info("Successfully pulled model %s", local_model_val)
                         else:
-                            errors.append(f"Failed to install {local_model}: {dl.get('error', 'unknown error')}")
+                            errors.append(f"Failed to install {local_model_val}: {dl.get('error', 'unknown error')}")
 
             key_valid = True
             if cloud_provider and cloud_provider != "none" and api_key:
@@ -805,6 +855,8 @@ class ModelManager:
                 saved["api_key"] = api_key
             elif "api_key" in saved and not key_valid:
                 del saved["api_key"]
+            if routing_profile is not None:
+                saved["routingProfile"] = routing_profile
             try:
                 self.save_config(saved)
             except Exception as exc:
@@ -873,6 +925,18 @@ class ModelManager:
             else:
                 CAR_TIERS[3]["kind"] = "local"
                 CAR_TIERS[3]["model"] = local_model
+
+            # Apply routing profile if saved
+            saved = self.load_saved_config()
+            routing_profile = saved.get("routingProfile")
+            if routing_profile:
+                if routing_profile.get("reasoning"):
+                    mr._semantic_categories["math_reasoning"]["default_model"] = routing_profile["reasoning"]
+                if routing_profile.get("coding"):
+                    mr._semantic_categories["coding"]["default_model"] = routing_profile["coding"]
+                if routing_profile.get("general"):
+                    mr._semantic_categories["creative"]["default_model"] = routing_profile["general"]
+                    mr._semantic_categories["conversational"]["default_model"] = routing_profile["general"]
 
             logger.info("CAR hot-reloaded: local=%s, byok=%s", local_model, self.config.models.byok_model or "none")
         except Exception as exc:

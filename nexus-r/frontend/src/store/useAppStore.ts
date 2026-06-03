@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { apiPost, apiUrl } from '../api/client';
+import { sendChat, streamChat, interruptChat } from '../api/chat';
 
 export interface Message {
   id: string;
@@ -28,7 +28,6 @@ interface AppState {
   streamingMsgId: string | null;
   isMonitorOpen: boolean;
   isSidebarOpen: boolean;
-  isSettingsOpen: boolean;
   
   // Dev Monitor Metrics
   workflowState: string;
@@ -38,7 +37,6 @@ interface AppState {
   activeTools: string;
   totalSessionCost: number;
   reasoningTrace: string;
-
   // Actions
   setCurrentConversation: (id: string | null) => void;
   addMessage: (msg: Message) => void;
@@ -48,10 +46,9 @@ interface AppState {
   setStreamingMsgId: (id: string | null) => void;
   toggleMonitor: () => void;
   toggleSidebar: () => void;
-  setSettingsOpen: (isOpen: boolean) => void;
   
   // Domain actions
-  sendChatMessage: (content: string) => Promise<void>;
+  sendChatMessage: (content: string, model?: string) => Promise<void>;
   interruptChat: () => Promise<void>;
 }
 
@@ -65,9 +62,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   }],
   attachedImages: [],
   streamingMsgId: null,
-  isMonitorOpen: true,
+  isMonitorOpen: false,
   isSidebarOpen: true,
-  isSettingsOpen: false,
   
   workflowState: 'idle',
   workflowStage: 'Ready',
@@ -87,11 +83,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   setStreamingMsgId: (id) => set({ streamingMsgId: id }),
   toggleMonitor: () => set((state) => ({ isMonitorOpen: !state.isMonitorOpen })),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
-  setSettingsOpen: (isOpen) => set({ isSettingsOpen: isOpen }),
 
-  sendChatMessage: async (content: string) => {
+  sendChatMessage: async (content: string, model?: string) => {
     const state = get();
-    if (!content.trim()) return;
+    if (!content.trim() && state.attachedImages.length === 0) return;
     
     // Clear initial welcome message if present
     if (state.messages.length === 1 && state.messages[0].id === 'welcome') {
@@ -99,7 +94,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const userMsg: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: 'user',
       content,
       time: Date.now()
@@ -116,47 +111,77 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
 
     try {
-      const body: any = { message: content };
-      if (state.currentConversationId) body.conversation_id = state.currentConversationId;
-      if (state.attachedImages.length > 0) body.images = state.attachedImages;
+      const params: any = { message: content };
+      if (state.currentConversationId) params.conversation_id = state.currentConversationId;
+      if (state.attachedImages.length > 0) params.images = state.attachedImages;
+      if (model) params.model = model;
       
       set({ attachedImages: [] });
 
-      const response = await fetch(apiUrl("/chat"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body)
+      // Create a skeleton message first
+      const msgId = crypto.randomUUID();
+      const skeletonMsg: Message = {
+        id: msgId,
+        role: 'assistant',
+        content: '',
+        streaming: true,
+      };
+      
+      set((s) => ({
+        messages: [...s.messages, skeletonMsg],
+        streamingMsgId: msgId,
+      }));
+
+      await streamChat(params, (event) => {
+        if (event.type === 'status') {
+          set({ workflowState: event.value, workflowStage: event.value });
+        } else if (event.type === 'token') {
+          set((s) => {
+            const updatedMsgs = s.messages.map(m => {
+              if (m.id === msgId) {
+                return { ...m, content: m.content + event.value };
+              }
+              return m;
+            });
+            return { messages: updatedMsgs };
+          });
+        } else if (event.type === 'done') {
+          if (!get().currentConversationId && event.conversation_id) {
+            set({ currentConversationId: event.conversation_id });
+          }
+          set((s) => {
+            const updatedMsgs = s.messages.map(m => {
+              if (m.id === msgId) {
+                return { ...m, streaming: false, model: event.model };
+              }
+              return m;
+            });
+            return { 
+              messages: updatedMsgs,
+              streamingMsgId: null,
+              workflowState: 'idle',
+            };
+          });
+        } else if (event.type === 'error') {
+          set((s) => {
+            const updatedMsgs = s.messages.map(m => {
+              if (m.id === msgId) {
+                return { ...m, content: m.content + `\n\n[Error: ${event.value}]`, streaming: false };
+              }
+              return m;
+            });
+            return { messages: updatedMsgs, streamingMsgId: null, workflowState: 'idle' };
+          });
+        }
       });
-      
-      if (!response.ok) {
-        throw new Error(await response.text());
-      }
-      
-      const data = await response.json();
-      
-      if (!state.currentConversationId && data.conversation_id) {
-        set({ currentConversationId: data.conversation_id });
-        // Fetch conversations again or dispatch event
-      }
-      
-      if (data.status === "processing") {
-        set({ streamingMsgId: data.message_id });
-        
-        const skeletonMsg: Message = {
-          id: data.message_id,
-          role: 'assistant',
-          content: '...', // Handled by UI to show skeleton loader
-          streaming: true,
-        };
-        set((s) => ({ messages: [...s.messages, skeletonMsg] }));
-      }
+
     } catch (e: any) {
       const errorMsg: Message = {
         id: Date.now().toString(),
         role: 'assistant',
         content: `Error: ${e.message}`
       };
-      set((s) => ({ messages: [...s.messages, errorMsg] }));
+      set((s) => ({ messages: [...s.messages, errorMsg], streamingMsgId: null, workflowState: 'idle' }));
     }
   },
 
@@ -174,7 +199,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         workflowState: 'idle',
         workflowStage: 'Finalized'
       }));
-      await apiPost("/chat/interrupt", { message_id: state.streamingMsgId });
+      await interruptChat(state.streamingMsgId);
     } catch (e) {
       console.error(e);
     }

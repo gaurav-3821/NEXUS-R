@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAppStore } from '../../store/useAppStore';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { SettingsLayout } from '../layout/SettingsLayout';
 import { PageHeader } from '../ui/PageHeader';
 import { SearchBar } from '../ui/SearchBar';
@@ -10,10 +10,41 @@ import {
 } from 'lucide-react';
 import clsx from 'clsx';
 
+import { useEffect } from 'react';
+import { useProvidersStore } from '../../store/providersStore';
+
 export default function ProvidersPage() {
-  const { setSettingsOpen } = useAppStore();
-  const [activeTab, setActiveTab] = useState('api-keys');
-  const [selectedProvider, setSelectedProvider] = useState('openai');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeTab = location.pathname.split('/').pop() || 'api-keys';
+  const { providers, isLoading, loadProviders, updateKey, removeProvider } = useProvidersStore();
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+
+  useEffect(() => {
+    loadProviders();
+  }, [loadProviders]);
+
+  useEffect(() => {
+    if (providers.length > 0 && !selectedProvider) {
+      setSelectedProvider(providers[0].id);
+    }
+  }, [providers, selectedProvider]);
+
+  const handleUpdateKey = async () => {
+    if (selectedProvider && apiKeyInput) {
+      const success = await updateKey(selectedProvider, apiKeyInput);
+      if (success) {
+        setApiKeyInput('');
+      }
+    }
+  };
+
+  const handleRemoveProvider = async () => {
+    if (selectedProvider) {
+      await removeProvider(selectedProvider);
+    }
+  };
 
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={18} /> },
@@ -31,14 +62,18 @@ export default function ProvidersPage() {
     { id: 'about', label: 'About', icon: <Info size={18} /> },
   ];
 
-  const providersList = [
-    { id: 'openai', name: 'OpenAI', status: 'Active', keyPreview: 'sk-********************', icon: <Bot className="text-emerald-500" /> },
-    { id: 'anthropic', name: 'Anthropic', status: 'Active', keyPreview: 'sk-ant-****************', icon: <Cpu className="text-orange-500" /> },
-    { id: 'groq', name: 'Groq', status: 'Active', keyPreview: 'gsk_********************', icon: <Zap className="text-red-500" /> },
-    { id: 'google', name: 'Google', status: 'Inactive', keyPreview: 'AIza********************', icon: <Globe className="text-blue-500" /> },
-    { id: 'openrouter', name: 'OpenRouter', status: 'Inactive', keyPreview: 'sk-or-*****************', icon: <Network className="text-indigo-500" /> },
-    { id: 'custom', name: 'Custom Provider', status: 'Inactive', keyPreview: 'Not configured', icon: <Code className="text-gray-500" /> },
-  ];
+  const getProviderIcon = (id: string) => {
+    switch (id) {
+      case 'openai': return <Bot className="text-emerald-500" />;
+      case 'anthropic': return <Cpu className="text-orange-500" />;
+      case 'groq': return <Zap className="text-red-500" />;
+      case 'google': return <Globe className="text-blue-500" />;
+      case 'openrouter': return <Network className="text-indigo-500" />;
+      default: return <Code className="text-gray-500" />;
+    }
+  };
+
+  const activeProvider = providers.find(p => p.id === selectedProvider);
 
   const header = (
     <PageHeader 
@@ -52,7 +87,7 @@ export default function ProvidersPage() {
     <SettingsNavigation 
       tabs={tabs} 
       activeTab={activeTab} 
-      onTabChange={setActiveTab} 
+      onTabChange={(id) => navigate(`/settings/${id}`)} 
       footerAction={
         <button className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
           <RefreshCw size={14} />
@@ -65,13 +100,13 @@ export default function ProvidersPage() {
   const footer = (
     <>
       <button 
-        onClick={() => setSettingsOpen(false)}
+        onClick={() => navigate('/')}
         className="px-6 py-2.5 rounded-full text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
       >
         Cancel
       </button>
       <button 
-        onClick={() => setSettingsOpen(false)}
+        onClick={() => navigate('/')}
         className="px-8 py-2.5 rounded-full text-sm font-semibold text-white bg-[#4f46e5] hover:bg-indigo-600 shadow-md flex items-center gap-2 transition-all"
       >
         <Settings size={16} />
@@ -85,7 +120,7 @@ export default function ProvidersPage() {
       header={header}
       sidebar={sidebar}
       footer={footer}
-      isOverlay={true}
+      isOverlay={false}
     >
       <div className="animate-in fade-in slide-in-from-bottom-2 h-full flex flex-col w-[850px] max-w-full">
         {/* Page Title inside content */}
@@ -122,7 +157,9 @@ export default function ProvidersPage() {
             </div>
 
             <div className="space-y-2 mt-2">
-              {providersList.map(provider => (
+              {isLoading && providers.length === 0 ? (
+                <div className="text-sm text-gray-500 text-center py-4">Loading providers...</div>
+              ) : providers.map(provider => (
                 <button
                   key={provider.id}
                   onClick={() => setSelectedProvider(provider.id)}
@@ -135,11 +172,13 @@ export default function ProvidersPage() {
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center shrink-0">
-                      {provider.icon}
+                      {getProviderIcon(provider.id)}
                     </div>
                     <div>
                       <div className="text-sm font-bold text-gray-900">{provider.name}</div>
-                      <div className="text-xs font-medium text-gray-400 font-mono mt-0.5">{provider.keyPreview}</div>
+                      <div className="text-xs font-medium text-gray-400 font-mono mt-0.5">
+                        {provider.has_key ? `${provider.key_prefix}****************` : 'Not configured'}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -171,116 +210,89 @@ export default function ProvidersPage() {
 
           {/* Right Column: Provider Details */}
           <div className="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-            <div className="p-6">
-              
-              {/* Detail Header */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
-                    <Bot size={24} />
+            {activeProvider ? (
+              <div className="p-6">
+                
+                {/* Detail Header */}
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                      {getProviderIcon(activeProvider.id)}
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-900">{activeProvider.name}</h3>
+                    {activeProvider.has_key && (
+                      <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ml-1">Active</span>
+                    )}
                   </div>
-                  <h3 className="text-xl font-bold text-gray-900">OpenAI</h3>
-                  <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ml-1">Active</span>
+                  {activeProvider.has_key && (
+                    <button 
+                      onClick={handleRemoveProvider}
+                      className="text-sm font-semibold text-red-600 border border-red-100 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors"
+                    >
+                      <Trash2 size={14} /> Remove
+                    </button>
+                  )}
                 </div>
-                <button className="text-sm font-semibold text-red-600 border border-red-100 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg flex items-center gap-2 transition-colors">
-                  <Trash2 size={14} /> Remove
-                </button>
-              </div>
 
-              {/* Detail Tabs */}
-              <div className="flex gap-6 border-b border-gray-100 mb-6">
-                <button className="pb-2 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600">Configuration</button>
-                <button className="pb-2 text-sm font-bold text-gray-500 hover:text-gray-700">Models</button>
-                <button className="pb-2 text-sm font-bold text-gray-500 hover:text-gray-700">Rate Limits</button>
-                <button className="pb-2 text-sm font-bold text-gray-500 hover:text-gray-700">Usage</button>
-              </div>
+                {/* Detail Tabs */}
+                <div className="flex gap-6 border-b border-gray-100 mb-6">
+                  <button className="pb-2 text-sm font-bold text-indigo-600 border-b-2 border-indigo-600">Configuration</button>
+                </div>
 
-              {/* Form Inputs */}
-              <div className="space-y-5">
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-1">API Key</label>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Enter your OpenAI API key to connect your account.</p>
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <input 
-                        type="password" 
-                        defaultValue="sk-abc123def456ghi789jkl012mno345pqr" 
-                        className="w-full bg-white border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm font-medium outline-none focus:border-indigo-400 shadow-sm"
-                      />
-                      <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
-                        <Eye size={16} />
+                {/* Form Inputs */}
+                <div className="space-y-5">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-1">API Key</label>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Enter your {activeProvider.name} API key to connect your account.</p>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input 
+                          type="password" 
+                          value={apiKeyInput}
+                          onChange={(e) => setApiKeyInput(e.target.value)}
+                          placeholder={activeProvider.has_key ? `${activeProvider.key_prefix}****************` : "Enter new API key..."}
+                          className="w-full bg-white border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm font-medium outline-none focus:border-indigo-400 shadow-sm"
+                        />
+                        <button className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                          <Eye size={16} />
+                        </button>
+                      </div>
+                      <button 
+                        onClick={handleUpdateKey}
+                        disabled={!apiKeyInput}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm whitespace-nowrap disabled:opacity-50"
+                      >
+                        {activeProvider.has_key ? 'Update Key' : 'Save Key'}
                       </button>
                     </div>
-                    <button className="px-4 py-2 bg-white border border-gray-200 text-gray-700 rounded-lg text-sm font-semibold hover:bg-gray-50 transition-colors shadow-sm whitespace-nowrap">
-                      Update Key
-                    </button>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-1">Base URL (Optional)</label>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Leave as default unless you're using a custom endpoint.</p>
-                  <input 
-                    type="text" 
-                    defaultValue="https://api.openai.com/v1" 
-                    className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium outline-none focus:border-indigo-400 shadow-sm text-gray-600"
-                  />
-                </div>
-
-                {/* Connection Status Box */}
-                <div className="bg-emerald-50/30 border border-emerald-100 rounded-xl p-4 flex items-center justify-between">
-                  <div className="flex gap-3">
-                    <CheckCircle2 className="text-emerald-500 mt-0.5" size={20} />
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900">Connection Status</h4>
-                      <p className="text-xs font-medium text-emerald-600 mt-0.5">Connected successfully</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <button className="text-xs font-bold text-indigo-600 border border-indigo-100 bg-white hover:bg-indigo-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm">
-                      <RefreshCw size={12} /> Verify Connection
-                    </button>
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400">
-                      <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
-                      Last verified: 2 minutes ago
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info Rows */}
-                <div className="border border-gray-100 rounded-xl overflow-hidden shadow-sm">
-                  <button className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 border-b border-gray-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500">
-                        <DownloadCloud size={16} />
-                      </div>
-                      <div className="text-left">
-                        <div className="text-sm font-bold text-gray-900">Models Available</div>
-                        <div className="text-xs font-medium text-gray-500">List of models you can access with this API key.</div>
+                  {activeProvider.has_key ? (
+                    <div className="bg-emerald-50/30 border border-emerald-100 rounded-xl p-4 flex items-center justify-between">
+                      <div className="flex gap-3">
+                        <CheckCircle2 className="text-emerald-500 mt-0.5" size={20} />
+                        <div>
+                          <h4 className="text-sm font-bold text-gray-900">Connection Status</h4>
+                          <p className="text-xs font-medium text-emerald-600 mt-0.5">Key stored securely.</p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 text-sm font-bold text-gray-700">
-                      12 models <ChevronRight size={16} className="text-gray-400" />
-                    </div>
-                  </button>
-                  <button className="w-full flex items-center justify-between p-4 bg-white hover:bg-gray-50 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500">
-                        <Activity size={16} />
-                      </div>
-                      <div className="text-left">
-                        <div className="text-sm font-bold text-gray-900">Rate Limits</div>
-                        <div className="text-xs font-medium text-gray-500">View your current usage and rate limit details.</div>
+                  ) : (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center gap-3">
+                      <Info className="text-gray-400 mt-0.5" size={20} />
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900">Not Configured</h4>
+                        <p className="text-xs font-medium text-gray-500 mt-0.5">Please provide an API key to enable {activeProvider.name} models.</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-1 text-sm font-bold text-gray-700">
-                      500 RPM / 90,000 TPM <ChevronRight size={16} className="text-gray-400" />
-                    </div>
-                  </button>
+                  )}
                 </div>
-
               </div>
-            </div>
+            ) : (
+              <div className="p-12 text-center text-gray-500">
+                <p>Select a provider to view its configuration.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

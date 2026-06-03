@@ -1,0 +1,231 @@
+[
+  {
+    "endpoint": "/memory",
+    "status": 200,
+    "data": {
+      "memories": [],
+      "stats": {
+        "total_memories": 0,
+        "max_capacity": 500,
+        "categories": {},
+        "sources": {},
+        "average_confidence": 0.0,
+        "embedding_model": "nomic-embed-text"
+      }
+    }
+  },
+  {
+    "endpoint": "/models/status",
+    "status": 200,
+    "data": {
+      "current": {
+        "local_model": "ollama/auto",
+        "cloud_provider": "none",
+        "api_key_configured": true
+      },
+      "cloud_options": [
+        {
+          "value": "groq",
+          "label": "Groq (Llama 3.3 70B)",
+          "model": "groq/llama-3.3-70b-versatile",
+          "secret_name": "groq_api_key",
+          "env_var": "NEXUS_GROQ_API_KEY",
+          "cost_per_1k": "$0.59",
+          "key_prefix": "gsk_"
+        },
+        {
+          "value": "anthropic",
+          "label": "Anthropic (Claude 3.5 Sonnet)",
+          "model": "anthropic/claude-3-5-sonnet-20241022",
+          "secret_name": "anthropic_api_key",
+          "env_var": "NEXUS_ANTHROPIC_API_KEY",
+          "cost_per_1k": "$3.00",
+          "key_prefix": "sk-ant-"
+        },
+        {
+          "value": "openai",
+          "label": "OpenAI (GPT-4o)",
+          "model": "openai/gpt-4o",
+          "secret_name": "openai_api_key",
+          "env_var": "NEXUS_OPENAI_API_KEY",
+          "cost_per_1k": "$2.50",
+          "key_prefix": "sk-"
+        },
+        {
+          "value": "opencode",
+          "label": "OpenCode (DeepSeek, free tier)",
+          "model": "openai/deepseek-chat",
+          "secret_name": "opencode_api_key",
+          "env_var": "NEXUS_OPENCODE_API_KEY",
+          "cost_per_1k": "$0.00",
+          "key_prefix": ""
+        },
+        {
+          "value": "openrouter",
+          "label": "OpenRouter (multi-model)",
+          "model": "openrouter/google/gemma-2-9b-it:free",
+          "secret_name": "openrouter_api_key",
+          "env_var": "NEXUS_OPENROUTER_API_KEY",
+          "cost_per_1k": "varies",
+          "key_prefix": ""
+        },
+        {
+          "value": "nvidia_nim",
+          "label": "NVIDIA NIM (free tier)",
+          "model": "nvidia_nim/meta/llama3-70b-instruct",
+          "secret_name": "nvidia_nim_api_key",
+          "env_var": "NEXUS_NVIDIA_NIM_API_KEY",
+          "cost_per_1k": "$0.00",
+          "key_prefix": "nvapi-"
+        },
+        {
+          "value": "together",
+          "label": "Together AI",
+          "model": "together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+          "secret_name": "together_api_key",
+          "env_var": "NEXUS_TOGETHER_API_KEY",
+          "cost_per_1k": "$0.10",
+          "key_prefix": ""
+        },
+        {
+          "value": "localai",
+          "label": "LocalAI (self-hosted)",
+          "model": "localai/llama",
+          "secret_name": "localai_api_key",
+          "env_var": "NEXUS_LOCALAI_API_KEY",
+          "cost_per_1k": "$0.00",
+          "key_prefix": ""
+        },
+        {
+          "value": "google",
+          "label": "Google AI Studio (Gemini 2.0 Flash)",
+          "model": "gemini/gemini-2.5-flash",
+          "secret_name": "google_api_key",
+          "env_var": "NEXUS_GOOGLE_API_KEY",
+          "cost_per_1k": "$0.00 (free tier)",
+          "key_prefix": "AIza"
+        },
+        {
+          "value": "none",
+          "label": "None (local only)",
+          "model": "",
+          "secret_name": "",
+          "env_var": "",
+          "cost_per_1k": "$0.00",
+          "key_prefix": ""
+        }
+      ]
+    }
+  },
+  {
+    "endpoint": "/models/list-local",
+    "status": 200,
+    "data": {
+      "ollama": [
+        {
+          "name": "llama3:latest",
+          "details": {
+            "parameter_size": "8B",
+            "quantization_level": "Q4_0"
+          }
+        },
+        {
+          "name": "mistral:latest",
+          "details": {
+            "parameter_size": "7B",
+            "quantization_level": "Q4_0"
+          }
+        },
+        {
+          "name": "phi3:latest",
+          "details": {
+            "parameter_size": "3.8B",
+            "quantization_level": "Q4_0"
+          }
+        }
+      ],
+      "lm_studio": [],
+      "all": []
+    }
+  },
+  {
+    "endpoint": "/providers",
+    "status": 200,
+    "data": {
+      "providers": [
+        {
+          "id": "groq",
+          "name": "Groq",
+          "model": "groq/llama-3.3-70b-versatile",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": "gsk_"
+        },
+        {
+          "id": "anthropic",
+          "name": "Anthropic",
+          "model": "anthropic/claude-3-5-sonnet-20241022",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": "sk-ant-"
+        },
+        {
+          "id": "openai",
+          "name": "OpenAI",
+          "model": "openai/gpt-4o",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": "sk-"
+        },
+        {
+          "id": "opencode",
+          "name": "OpenCode",
+          "model": "openai/deepseek-chat",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": ""
+        },
+        {
+          "id": "openrouter",
+          "name": "OpenRouter",
+          "model": "openrouter/google/gemma-2-9b-it:free",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": ""
+        },
+        {
+          "id": "nvidia_nim",
+          "name": "NVIDIA NIM",
+          "model": "nvidia_nim/meta/llama3-70b-instruct",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": "nvapi-"
+        },
+        {
+          "id": "together",
+          "name": "Together AI",
+          "model": "together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": ""
+        },
+        {
+          "id": "localai",
+          "name": "LocalAI",
+          "model": "localai/llama",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": ""
+        },
+        {
+          "id": "google",
+          "name": "Google AI Studio",
+          "model": "gemini/gemini-2.5-flash",
+          "has_key": false,
+          "status": "Inactive",
+          "key_prefix": "AIza"
+        }
+      ]
+    }
+  }
+]

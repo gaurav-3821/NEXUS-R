@@ -47,20 +47,20 @@ export function Modal({ isOpen, onClose, title, description, children, footer, m
       {/* Modal Panel */}
       <div 
         className={clsx(
-          "relative bg-white rounded-2xl shadow-2xl flex flex-col w-full max-h-[90vh] animate-in zoom-in-95 duration-200",
+          "relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl flex flex-col w-full max-h-[90vh] animate-in zoom-in-95 duration-200",
           maxWidthClasses[maxWidth]
         )}
       >
         {/* Header */}
         {(title || description) && (
-          <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
+          <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100 dark:border-slate-800">
             <div>
-              {title && <h2 className="text-xl font-bold text-gray-900">{title}</h2>}
-              {description && <p className="text-sm text-gray-500 mt-1">{description}</p>}
+              {title && <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{title}</h2>}
+              {description && <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{description}</p>}
             </div>
             <button 
               onClick={onClose}
-              className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors ml-4"
+              className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors ml-4"
             >
               <X size={20} />
             </button>
@@ -74,7 +74,7 @@ export function Modal({ isOpen, onClose, title, description, children, footer, m
 
         {/* Footer */}
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex items-center justify-end gap-3">
+          <div className="px-6 py-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-[#0f172a]/50 rounded-b-2xl flex items-center justify-end gap-3">
             {footer}
           </div>
         )}

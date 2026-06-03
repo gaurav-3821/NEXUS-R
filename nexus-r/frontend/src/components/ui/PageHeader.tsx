@@ -11,14 +11,14 @@ export function PageHeader({ title, subtitle, action, className, ...props }: Pag
   return (
     <div 
       className={clsx(
-        "flex items-center justify-between px-8 py-5 border-b border-gray-200 bg-white",
+        "flex items-center justify-between px-8 py-5 border-b border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors",
         className
       )}
       {...props}
     >
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">{title}</h2>
-        {subtitle && <p className="text-sm text-gray-500 font-medium mt-1">{subtitle}</p>}
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{title}</h2>
+        {subtitle && <p className="text-sm text-gray-500 dark:text-gray-400 font-medium mt-1">{subtitle}</p>}
       </div>
       {action && (
         <div>

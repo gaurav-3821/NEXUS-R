@@ -11,13 +11,13 @@ export function LoadingState({ text = 'Loading...', fullScreen = false, classNam
   return (
     <div 
       className={clsx(
-        "flex flex-col items-center justify-center gap-3 text-gray-500",
-        fullScreen ? "fixed inset-0 z-50 bg-white/80 backdrop-blur-sm" : "p-8",
+        "flex flex-col items-center justify-center gap-3 text-gray-500 dark:text-gray-400",
+        fullScreen ? "fixed inset-0 z-50 bg-white dark:bg-slate-900/80 backdrop-blur-sm" : "p-8",
         className
       )}
       {...props}
     >
-      <Loader2 size={32} className="animate-spin text-indigo-600" />
+      <Loader2 size={32} className="animate-spin text-accent-600" />
       {text && <p className="text-sm font-medium animate-pulse">{text}</p>}
     </div>
   );

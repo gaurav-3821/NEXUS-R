@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, HTTPException, Request, Depends, WebSocket, BackgroundTasks, Query, WebSocketDisconnect, status
+from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -32,6 +32,19 @@ class ConfigureRequest(BaseModel):
     local_model: str | None = None
     cloud_provider: str | None = None
     api_key: str | None = None
+
+class RoutingProfile(BaseModel):
+    router: str | None = None
+    reasoning: str | None = None
+    coding: str | None = None
+    general: str | None = None
+    embedding: str | None = None
+
+class ConfigRequest(BaseModel):
+    local_model: str | None = None
+    cloud_provider: str | None = None
+    api_key: str | None = None
+    routingProfile: RoutingProfile | None = None
 
 class ChatRequest(BaseModel):
     message: str
@@ -477,6 +490,7 @@ _ws_handler: CostWebSocketHandler | None = None
 _dashboard_service: CostDashboardService | None = None
 _chat_handler: Any = None
 _model_manager: Any = None
+_secret_registry: Any = None
 _rate_limiter: dict[str, list[float]] = defaultdict(list)
 
 
@@ -498,7 +512,8 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
     # Resolve config, router, and secret_registry
     cfg = config
     router = None
-    secret_registry = None
+    global _secret_registry
+    _secret_registry = None
 
     if chat_handler is not None:
         _chat_handler = chat_handler
@@ -507,7 +522,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             cfg = getattr(router, "config", None)
             models = getattr(router, "models", None)
             if models is not None:
-                secret_registry = getattr(models, "secret_registry", None)
+                _secret_registry = getattr(models, "secret_registry", None)
     else:
         # Initialize default ChatHandler if none provided
         from modules.web_ui.src.chat_handler import ChatHandler
@@ -518,8 +533,8 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         from nexus_r.config import NEXUSConfig
 
         cfg = config or NEXUSConfig.from_env(os.getcwd())
-        secret_registry = SecretRegistry(cfg.app_name)
-        secret_registry.bootstrap_from_environment(
+        _secret_registry = SecretRegistry(cfg.app_name)
+        _secret_registry.bootstrap_from_environment(
             cfg.models.byok_secret_name,
             cfg.models.byok_api_key_env,
         )
@@ -527,7 +542,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         router = CognitionRouter(
             cfg,
             event_store,
-            secret_registry,
+            _secret_registry,
         )
         permission_enforcer = PermissionEnforcer()
         cost_tracker = CostTracker(event_store)
@@ -551,7 +566,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         config=cfg,
         event_store=event_store,
         router=router,
-        secret_registry=secret_registry,
+        secret_registry=_secret_registry,
     )
 
     @app.on_event("startup")
@@ -583,6 +598,10 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
     async def dashboard_html(token: str = Query("")):
         _check_auth(token)
         return HTMLResponse(content=index_html(), status_code=200)
+
+    @app.get("/api/v1/auth/token")
+    async def get_auth_token():
+        return {"token": _get_token()}
 
     @app.post("/api/v1/telemetry")
     async def receive_telemetry(batch: TelemetryBatch, token: str = Query("")):
@@ -750,6 +769,28 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             images=request.images
         )
 
+    @app.post("/api/v1/chat/stream")
+    async def chat_stream_send(
+        request: ChatRequest,
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        _check_rate_limit("chat")
+        if not request.message.strip():
+            raise HTTPException(status_code=422, detail="Message cannot be empty")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        
+        return StreamingResponse(
+            _chat_handler.stream_message(
+                message=request.message, 
+                model=request.model, 
+                conversation_id=request.conversation_id,
+                images=request.images
+            ),
+            media_type="text/event-stream"
+        )
+
     @app.post("/api/v1/chat/hitl-resume")
     async def chat_hitl_resume(
         request: HITLResumeRequest,
@@ -871,6 +912,27 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             "cloud_options": CLOUD_PROVIDER_OPTIONS,
         }
 
+    @app.get("/api/v1/models/routing-profile")
+    async def models_routing_profile(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_routing_profile")
+        if _chat_handler is None or _chat_handler.router is None:
+            raise HTTPException(status_code=500, detail="Router not available")
+            
+        registry = getattr(_chat_handler.router, "models", None)
+        if registry is None:
+            raise HTTPException(status_code=500, detail="Model registry not available")
+            
+        categories = getattr(registry, "_semantic_categories", {})
+        
+        return {
+            "router": "Semantic Router v1",
+            "reasoning": categories.get("math_reasoning", {}).get("default_model", "Unknown"),
+            "coding": categories.get("coding", {}).get("default_model", "Unknown"),
+            "general": categories.get("creative", {}).get("default_model", "Unknown"),
+            "embedding": "nomic-embed-text:latest"
+        }
+
     @app.get("/api/v1/models/list-local")
     async def models_list_local(token: str = Query("")):
         _check_auth(token)
@@ -937,6 +999,69 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         else:
             raise HTTPException(status_code=422, detail="Either local_model or cloud_provider must be provided")
 
+    @app.get("/api/v1/models/config")
+    async def models_get_config(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_get_config")
+        if _model_manager is None or _chat_handler is None or _chat_handler.router is None:
+            raise HTTPException(status_code=500, detail="Components not initialized")
+        
+        cfg = _model_manager.config
+        api_key_configured = False
+        cloud_provider = "none"
+        local_model = cfg.models.local_model
+        
+        saved = _model_manager.load_saved_config()
+        if saved:
+            local_model = saved.get("local_model", local_model)
+            cloud_provider = saved.get("cloud_provider", "none")
+            if saved.get("api_key"):
+                api_key_configured = True
+        else:
+            from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+            byok_model = cfg.models.byok_model
+            for opt in CLOUD_PROVIDER_OPTIONS:
+                if opt["model"] == byok_model and opt["value"] != "none":
+                    cloud_provider = opt["value"]
+                    if os.environ.get(opt["env_var"]):
+                        api_key_configured = True
+                    break
+        
+        registry = getattr(_chat_handler.router, "models", None)
+        categories = getattr(registry, "_semantic_categories", {}) if registry else {}
+        routingProfile = saved.get("routingProfile") or {
+            "router": "Semantic Router v1",
+            "reasoning": categories.get("math_reasoning", {}).get("default_model", "Unknown"),
+            "coding": categories.get("coding", {}).get("default_model", "Unknown"),
+            "general": categories.get("creative", {}).get("default_model", "Unknown"),
+            "embedding": "nomic-embed-text:latest"
+        }
+
+        return {
+            "current": {
+                "local_model": local_model,
+                "cloud_provider": cloud_provider,
+                "api_key_configured": api_key_configured,
+            },
+            "routingProfile": routingProfile
+        }
+
+    @app.post("/api/v1/models/config")
+    async def models_post_config(req: ConfigRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models_post_config")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+        
+        # We reuse configure but add routingProfile to it
+        result = await _model_manager.configure(
+            local_model=req.local_model,
+            cloud_provider=req.cloud_provider,
+            api_key=req.api_key,
+            routing_profile=req.routingProfile.model_dump() if req.routingProfile else None
+        )
+        return result
+
     @app.post("/api/v1/models/configure")
     async def models_configure(req: ConfigureRequest, token: str = Query("")):
         _check_auth(token)
@@ -950,14 +1075,145 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             api_key=req.api_key,
         )
 
-    return app
+    # --- Providers Configuration Endpoints ---
 
+    class ProviderRequest(BaseModel):
+        provider: str
+        api_key: str | None = None
+
+    @app.get("/api/v1/providers")
+    async def get_providers(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("providers")
+        if _secret_registry is None:
+            raise HTTPException(status_code=500, detail="Secret registry not initialized")
+            
+        from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+        
+        results = []
+        for opt in CLOUD_PROVIDER_OPTIONS:
+            if opt["value"] == "none":
+                continue
+            
+            # Check if API key is stored (we just check if it exists or check the env var)
+            has_key = bool(_secret_registry.get_secret(opt["secret_name"]) or os.environ.get(opt["env_var"]))
+            
+            results.append({
+                "id": opt["value"],
+                "name": opt["label"].split(" (")[0],  # Extract just the name
+                "model": opt["model"],
+                "has_key": has_key,
+                "status": "Active" if has_key else "Inactive",
+                "key_prefix": opt["key_prefix"],
+            })
+            
+        return {"providers": results}
+
+    @app.post("/api/v1/providers")
+    async def update_provider(req: ProviderRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("update_provider")
+        if _secret_registry is None:
+            raise HTTPException(status_code=500, detail="Secret registry not initialized")
+            
+        from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+        opt = next((p for p in CLOUD_PROVIDER_OPTIONS if p["value"] == req.provider), None)
+        
+        if not opt:
+            raise HTTPException(status_code=404, detail="Provider not found")
+            
+        if req.api_key:
+            _secret_registry.set_secret(opt["secret_name"], req.api_key)
+            os.environ[opt["env_var"]] = req.api_key
+            
+        return {"success": True, "provider": req.provider}
+
+    @app.delete("/api/v1/providers/{provider}")
+    async def delete_provider(provider: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("delete_provider")
+        if _secret_registry is None:
+            raise HTTPException(status_code=500, detail="Secret registry not initialized")
+            
+        from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+        opt = next((p for p in CLOUD_PROVIDER_OPTIONS if p["value"] == provider), None)
+        
+        if not opt:
+            raise HTTPException(status_code=404, detail="Provider not found")
+            
+        _secret_registry.delete_secret(opt["secret_name"])
+        if opt["env_var"] in os.environ:
+            del os.environ[opt["env_var"]]
+            
+        return {"success": True, "provider": provider}
+
+    # --- Tools API ---
+    @app.get("/api/v1/tools")
+    async def get_tools(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        
+        # Static capability mapping representing the exact capabilities 
+        # implemented in execution_sandbox and chat_handler
+        return {
+            "tools": [
+                {
+                    "id": "playwright_search",
+                    "name": "Browser Sandbox",
+                    "description": "Headless agentic browser capable of web search, navigation, clicking, and scraping.",
+                    "category": "External",
+                    "status": "Active"
+                },
+                {
+                    "id": "timesfm_forecaster",
+                    "name": "TimesFM Forecaster",
+                    "description": "Zero-shot time-series forecaster for predicting sequence trends and bounds.",
+                    "category": "Cognitive",
+                    "status": "Active"
+                },
+                {
+                    "id": "safe_calculator",
+                    "name": "Safe Math Evaluator",
+                    "description": "Sandboxed calculator for evaluating strict mathematical expressions instantly.",
+                    "category": "Execution",
+                    "status": "Active"
+                },
+                {
+                    "id": "memory_parser",
+                    "name": "Preference Engine",
+                    "description": "Extracts semantic episodic memories and manages explicit user preferences.",
+                    "category": "Cognitive",
+                    "status": "Active"
+                },
+                {
+                    "id": "file_operations",
+                    "name": "Local Filesystem",
+                    "description": "Allows the agent to read, write, and list files within the restricted workspace.",
+                    "category": "Execution",
+                    "status": "Active"
+                },
+                {
+                    "id": "terminal_sandbox",
+                    "name": "Terminal Access",
+                    "description": "Execute whitelisted shell commands (e.g., git, python, npm) safely.",
+                    "category": "Execution",
+                    "status": "Active"
+                }
+            ]
+        }
+
+    return app
 
 def index_html() -> str:
     static_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
     if os.path.isfile(static_path):
         with open(static_path, encoding="utf-8") as f:
-            return f.read()
+            content = f.read()
+            token = _get_token()
+            meta_tag = f'<meta name="nexus-token" content="{token}">'
+            if "<head>" in content:
+                content = content.replace("<head>", f"<head>\n    {meta_tag}")
+            return content
     return "<html><body><h1>NEXUS-R Cost Dashboard</h1><p>Static files not found.</p></body></html>"
 
 
