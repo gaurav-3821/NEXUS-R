@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from time import perf_counter
 from typing import AsyncIterator, Protocol
 
@@ -89,6 +90,12 @@ class ModelRegistry:
         self._sentence_transformer_model = None
         self._sentence_transformer_loaded = False
         self._anchor_embeddings = {}
+        # --- Latency optimization caches ---
+        self._local_ready_cache: bool | None = None
+        self._local_ready_cache_time: float = 0.0
+        self._tags_cache: list[str] = []
+        self._tags_cache_time: float = 0.0
+        self._persistent_client: httpx.AsyncClient | None = None
         self._semantic_categories = {
             "coding": {
                 "model_keyword": "coder",
@@ -223,6 +230,7 @@ class ModelRegistry:
         if not chain:
             raise RuntimeError("No models are available to serve the request. Please configure a cloud API key or start local Ollama.")
         last_error: Exception | None = None
+        failures = []
         for index, provider in enumerate(chain):
             attempt = index + 1
             is_fallback = index > 0
@@ -236,25 +244,31 @@ class ModelRegistry:
                     total_in_chain=len(chain),
                 )
             try:
-                return await self._invoke_with_limit(
+                result = await self._invoke_with_limit(
                     provider=provider,
                     prompt=prompt,
                     fallback_used=is_fallback,
                     images=images,
                 )
+                for f in failures:
+                    self._log_provider_failure(*f)
+                return result
             except asyncio.CancelledError:
                 if self.telemetry is not None:
                     self.telemetry.increment("provider.cancellations_total")
                 raise
             except ProviderError as exc:
                 last_error = exc
-                self._log_provider_failure(exc, attempt, is_fallback)
+                failures.append((exc, attempt, is_fallback))
                 continue
             except Exception as exc:
                 last_error = exc
                 mapped = self._classify_unexpected_error(exc, provider)
-                self._log_provider_failure(mapped, attempt, is_fallback)
+                failures.append((mapped, attempt, is_fallback))
                 continue
+                
+        for f in failures:
+            self._log_provider_failure(*f)
         raise self._build_chain_exhausted_error(last_error, preferred)
 
     async def stream(self, prompt: str, preferred: str, images: list[str] | None = None) -> AsyncIterator[ModelStreamChunk]:
@@ -262,6 +276,7 @@ class ModelRegistry:
         if not chain:
             raise RuntimeError("No models are available to serve the request. Please configure a cloud API key or start local Ollama.")
         last_error: Exception | None = None
+        failures = []
         for index, provider in enumerate(chain):
             attempt = index + 1
             is_fallback = index > 0
@@ -275,6 +290,10 @@ class ModelRegistry:
                     total_in_chain=len(chain),
                 )
             try:
+                for f in failures:
+                    self._log_provider_failure(*f)
+                failures.clear()
+                
                 async for chunk in self._stream_with_limit(
                     provider=provider,
                     prompt=prompt,
@@ -289,13 +308,16 @@ class ModelRegistry:
                 raise
             except ProviderError as exc:
                 last_error = exc
-                self._log_provider_failure(exc, attempt, is_fallback)
+                failures.append((exc, attempt, is_fallback))
                 continue
             except Exception as exc:
                 last_error = exc
                 mapped = self._classify_unexpected_error(exc, provider)
-                self._log_provider_failure(mapped, attempt, is_fallback)
+                failures.append((mapped, attempt, is_fallback))
                 continue
+                
+        for f in failures:
+            self._log_provider_failure(*f)
         raise self._build_chain_exhausted_error(last_error, preferred)
 
     def _classify_provider_error(
@@ -591,17 +613,42 @@ class ModelRegistry:
                 
         return [0.0] * 384
 
-    def _get_dynamic_local_model(self, prompt: str) -> str:
-        available_models = []
+    def _get_available_models(self) -> list[str]:
+        """Return cached list of available Ollama models, refreshing every 60s."""
+        # Use cached /api/tags result (60s TTL) to avoid blocking HTTP per request
+        import time as _time
+        now = _time.time()
+        if self._tags_cache and now - self._tags_cache_time < 60.0:
+            return self._tags_cache
         try:
             BackendManager.get_instance().ensure_running()
             api_base = BackendManager.get_instance().base_url
-            # Check what models are downloaded in Ollama
             response = httpx.get(f"{api_base}/api/tags", timeout=1.0)
             if response.status_code == 200:
-                available_models = [m.get("name") for m in response.json().get("models", [])]
+                self._tags_cache = [m.get("name") for m in response.json().get("models", [])]
+                self._tags_cache_time = now
+                return self._tags_cache
         except Exception:
             pass
+        return self._tags_cache
+
+    def _local_model_ready(self, model_name: str) -> bool:
+        now = time.time()
+        if self._local_ready_cache is not None and (now - self._local_ready_cache_time) < 60.0:
+            return self._local_ready_cache
+        
+        # Check if the model exists in the available tags
+        try:
+            available = self._get_available_models()
+            clean_name = model_name.replace("ollama/", "")
+            self._local_ready_cache = any(clean_name in m for m in available)
+            self._local_ready_cache_time = now
+        except Exception:
+            self._local_ready_cache = False
+        return self._local_ready_cache
+
+    def _get_dynamic_local_model(self, prompt: str) -> str:
+        available_models = self._get_available_models()
 
         def find_model(target: str, keyword: str) -> str | None:
             for m in available_models:
@@ -619,7 +666,12 @@ class ModelRegistry:
         word_count = len(prompt.split())
 
         # Heuristic 1: Simple greeting/short acknowledgments
-        trivial_patterns = ['hi', 'hello', 'hey', 'thanks', 'thank you', 'ok', 'okay', 'bye', 'yes', 'no', 'sure']
+        trivial_patterns = [
+            'hi', 'hello', 'hey', 'thanks', 'thank you', 'ok', 'okay', 'bye',
+            'yes', 'no', 'sure', 'good morning', 'good night', 'how are you',
+            'lol', 'haha', 'cool', 'nice', 'great', 'awesome', 'wow', 'help',
+            'please',
+        ]
         if word_count <= 5 and prompt_lower.strip().rstrip('!?.') in trivial_patterns:
             result = find_model("gemma2:9b", "gemma2") or find_model("llama3.2:3b", "llama3.2")
             if result:
@@ -639,6 +691,41 @@ class ModelRegistry:
             if result:
                 self._last_model_reason = f"Heuristic match (Long Prompt: {word_count} words) → high-capacity model"
                 return result
+
+        # Heuristic 4: Keyword-based coding detection (avoids embedding computation)
+        code_keywords = {'python', 'javascript', 'typescript', 'code', 'function', 'error', 'bug',
+                         'fix', 'implement', 'class', 'variable', 'loop', 'array', 'list', 'dict',
+                         'string', 'int', 'float', 'return', 'print', 'async', 'await', 'html',
+                         'css', 'react', 'api', 'sql', 'database', 'git', 'compile', 'runtime',
+                         'syntax', 'import', 'module', 'package', 'npm', 'pip', 'docker',
+                         'debug', 'trace', 'exception', 'stack'}
+        prompt_words_lower = set(w.lower().strip('.,;:!?()[]{}') for w in words)
+        code_overlap = prompt_words_lower & code_keywords
+        if len(code_overlap) >= 2:
+            result = find_model("antigravity-coder:latest", "antigravity-coder") or find_model("qwen2.5-coder:7b", "qwen2.5-coder")
+            if result:
+                self._last_model_reason = f"Heuristic match (Code Keywords: {', '.join(list(code_overlap)[:3])}) → code model"
+                return result
+
+        # Heuristic 5: Keyword-based math/reasoning detection
+        math_keywords = {'calculate', 'solve', 'equation', 'integral', 'derivative', 'sum',
+                         'average', 'median', 'probability', 'statistics', 'theorem', 'proof',
+                         'formula', 'algebra', 'geometry', 'calculus', 'matrix', 'vector'}
+        math_overlap = prompt_words_lower & math_keywords
+        if len(math_overlap) >= 1:
+            result = find_model("deepseek-r1:8b", "deepseek-r1")
+            if result:
+                self._last_model_reason = f"Heuristic match (Math Keywords: {', '.join(list(math_overlap)[:3])}) → reasoning model"
+                return result
+
+        # Heuristic 6: Short conversational messages (< 8 words, no technical content)
+        if word_count <= 8 and not code_overlap and not math_overlap:
+            result = find_model("gemma2:9b", "gemma2") or find_model("llama3.2:3b", "llama3.2")
+            if result:
+                self._last_model_reason = "Heuristic match (Short Conversational) → default chat model"
+                return result
+
+        # Determine the current embedding mode and cache key
 
         # Determine the current embedding mode and cache key
         if self._sentence_transformer_loaded:
@@ -842,6 +929,8 @@ class ModelRegistry:
             api_base = self.config.models.local_api_base
 
         model_name = self._provider_model_name(provider.name)
+        if model_name.endswith('.gguf'):
+            model_name = model_name[:-5]
         payload = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
@@ -1013,6 +1102,9 @@ class ModelRegistry:
         return max(provider.estimated_cost, total_tokens * (provider.estimated_cost / 1000.0))
 
     async def warm_up(self) -> None:
+        # Trigger embedder warmup
+        self._get_embedding("warm-up", [])
+        
         if not self.local.available():
             return
         if self.telemetry is not None:
@@ -1028,20 +1120,41 @@ class ModelRegistry:
             if self.telemetry is not None:
                 self.telemetry.increment("model.warm_ups_total")
                 self.telemetry.emit("model_warm_up_completed")
+            # Pre-warm the dynamic model routing cache (anchor embeddings)
+            if "auto" in self.config.models.local_model.lower():
+                try:
+                    self._get_dynamic_local_model("hello")
+                except Exception:
+                    pass
         except Exception:
             if self.telemetry is not None:
                 self.telemetry.increment("model.warm_up_failures_total")
 
+        # Pre-warm semantic anchor cache if dynamic model selection is active
+        if "auto" in self.config.models.local_model.lower():
+            try:
+                self._get_dynamic_local_model("hello")
+                logger.info("Anchor embedding cache pre-warmed during startup.")
+            except Exception:
+                logger.debug("Anchor pre-warm failed (non-critical), will lazy-init on first request.")
+
     def _local_model_ready(self, model_name: str) -> bool:
+        # Cache result for 60 seconds to avoid blocking sync HTTP on every call
+        import time as _time
+        now = _time.time()
+        if self._local_ready_cache is not None and now - self._local_ready_cache_time < 60.0:
+            return self._local_ready_cache
         try:
             response = httpx.get(f"{self.config.models.local_api_base}/api/tags", timeout=1.5)
             response.raise_for_status()
             payload = response.json()
             models = payload.get("models", [])
-            # Return True if Ollama is running and has at least one model downloaded
-            return len(models) > 0
+            result = len(models) > 0
         except Exception:
-            return shutil.which("ollama") is not None
+            result = shutil.which("ollama") is not None
+        self._local_ready_cache = result
+        self._local_ready_cache_time = now
+        return result
 
     def _provider_model_name(self, model_name: str) -> str:
         return model_name.split("/", 1)[-1]

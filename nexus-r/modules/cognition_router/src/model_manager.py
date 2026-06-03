@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+
+import aiofiles
+import httpx
+from .hf_client import HuggingFaceClient
+from .gguf_parser import extract_gguf_metadata
 import httpx
 
 from nexus_r.events import Event
@@ -27,12 +32,6 @@ CLOUD_PROVIDER_OPTIONS = [
     {"value": "groq", "label": "Groq (Llama 3.3 70B)", "model": "groq/llama-3.3-70b-versatile",
      "secret_name": "groq_api_key", "env_var": "NEXUS_GROQ_API_KEY", "cost_per_1k": "$0.59",
      "key_prefix": "gsk_"},
-    {"value": "anthropic", "label": "Anthropic (Claude 3.5 Sonnet)", "model": "anthropic/claude-3-5-sonnet-20241022",
-     "secret_name": "anthropic_api_key", "env_var": "NEXUS_ANTHROPIC_API_KEY", "cost_per_1k": "$3.00",
-     "key_prefix": "sk-ant-"},
-    {"value": "openai", "label": "OpenAI (GPT-4o)", "model": "openai/gpt-4o",
-     "secret_name": "openai_api_key", "env_var": "NEXUS_OPENAI_API_KEY", "cost_per_1k": "$2.50",
-     "key_prefix": "sk-"},
     {"value": "opencode", "label": "OpenCode (DeepSeek, free tier)", "model": "openai/deepseek-chat",
      "secret_name": "opencode_api_key", "env_var": "NEXUS_OPENCODE_API_KEY", "cost_per_1k": "$0.00",
      "key_prefix": ""},
@@ -48,9 +47,6 @@ CLOUD_PROVIDER_OPTIONS = [
     {"value": "localai", "label": "LocalAI (self-hosted)", "model": "localai/llama",
      "secret_name": "localai_api_key", "env_var": "NEXUS_LOCALAI_API_KEY", "cost_per_1k": "$0.00",
      "key_prefix": ""},
-    {"value": "google", "label": "Google AI Studio (Gemini 2.0 Flash)", "model": "gemini/gemini-2.5-flash",
-     "secret_name": "google_api_key", "env_var": "NEXUS_GOOGLE_API_KEY", "cost_per_1k": "$0.00 (free tier)",
-     "key_prefix": "AIza"},
     {"value": "none", "label": "None (local only)", "model": "",
      "secret_name": "", "env_var": "", "cost_per_1k": "$0.00",
      "key_prefix": ""},
@@ -69,7 +65,6 @@ MODEL_SIZES: dict[str, float] = {
     "qwen2.5:7b": 4.5, "qwen2.5:14b": 9.0, "qwen2.5:32b": 19,
     "qwen2.5:72b": 45,
     "llama3.2:1b": 0.7, "llama3.2:3b": 2.0, "llama3:8b": 4.5,
-    "llama3:70b": 40,
     "gemma2:2b": 1.5, "gemma2:9b": 5.5, "gemma2:27b": 17,
     "mistral:7b": 4.2, "mistral-nemo:12b": 7.5, "mixtral:8x7b": 26,
     "codellama:7b": 3.8, "codellama:34b": 18, "codellama:70b": 38,
@@ -104,6 +99,10 @@ class DownloadJob:
     last_progress_at: float = 0.0
     process: asyncio.subprocess.Process | None = None
     cancelled: bool = False
+    paused: bool = False
+    eta_seconds: int = 0
+    filepath: str = ""
+    url: str = "" 
 
 
 _download_jobs: dict[str, DownloadJob] = {}
@@ -166,6 +165,9 @@ class ModelManager:
         self.router = router
         self.secret_registry = secret_registry
         self._config_path = Path(config.workspace_root) / MODELS_CONFIG_FILE
+        self.models_dir = Path(config.workspace_root) / ".nexus-r" / "models"
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.hf_client = HuggingFaceClient()
 
         # Load saved config on startup and apply it to router
         saved = self.load_saved_config()
@@ -285,20 +287,87 @@ class ModelManager:
 
     async def list_all_local_models(self) -> dict[str, Any]:
         ollama_models = await self.list_ollama_models()
+        gguf_models = self.list_gguf_models()
         lm_studio_models = await self.list_lm_studio_models()
         return {
-            "ollama": [
-                {
-                    "name": m["name"],
-                    "details": {"parameter_size": "", "quantization_level": ""},
-                    "size": m.get("size", ""),
-                    "source": "ollama",
-                }
-                for m in ollama_models
-            ],
+            "all": self._deduplicate_by_name(ollama_models + lm_studio_models + gguf_models),
             "lm_studio": lm_studio_models,
-            "all": ollama_models + lm_studio_models,
+            "gguf": gguf_models,
         }
+
+    @staticmethod
+    def _deduplicate_by_name(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        seen: set[str] = set()
+        result: list[dict[str, Any]] = []
+        for m in models:
+            name = m.get("name", "")
+            if name and name not in seen:
+                seen.add(name)
+                result.append(m)
+        return result
+
+
+    def list_gguf_models(self) -> list[dict[str, Any]]:
+        models = []
+        if not hasattr(self, 'models_dir') or not self.models_dir.exists():
+            return models
+        
+        for f in self.models_dir.rglob("*.gguf"):
+            try:
+                stat = f.stat()
+                # Try to get metadata
+                meta = extract_gguf_metadata(f)
+                
+                rel_path = f.relative_to(self.models_dir).as_posix()
+                
+                models.append({
+                    "name": rel_path,
+                    "id": f"gguf/{rel_path}",
+                    "size": f"{stat.st_size / (1024**3):.1f} GB",
+                    "details": {
+                        "parameter_size": meta.get("parameters", "unknown"),
+                        "quantization_level": meta.get("file_type", "unknown")
+                    },
+                    "source": "gguf",
+                    "metadata": meta
+                })
+            except Exception as e:
+                logger.error(f"Failed to stat gguf {f.name}: {e}")
+        return models
+
+
+    async def delete_local_model(self, model_name: str) -> bool:
+        if model_name.startswith("gguf/"):
+            # Delete local GGUF file securely
+            filename = model_name.replace("gguf/", "", 1)
+            filepath = (self.models_dir / filename).resolve()
+            
+            # Prevent path traversal
+            if not str(filepath).startswith(str(self.models_dir.resolve())):
+                logger.error("Path traversal attempt detected")
+                return False
+                
+            try:
+                if filepath.exists():
+                    filepath.unlink()
+                    return True
+                return False
+            except Exception as e:
+                logger.error(f"Failed to delete GGUF file {filepath}: {e}")
+                return False
+        else:
+            # Delete Ollama model
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "ollama", "rm", model_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+                return proc.returncode == 0
+            except Exception as e:
+                logger.error(f"Failed to delete Ollama model {model_name}: {e}")
+                return False
 
     async def validate_local_model(self, model_name: str) -> dict[str, Any]:
         local_models = await self.list_all_local_models()
@@ -479,11 +548,12 @@ class ModelManager:
 
     # --- Download job system ---
 
-    def start_download(self, model_name: str) -> dict[str, Any]:
+    def start_download(self, model_name: str, url: str = "") -> dict[str, Any]:
         if model_name.startswith("lmstudio/"):
             return {"success": False, "error": "LM Studio models cannot be auto-downloaded. Install via LM Studio UI."}
 
-        short_name = _ollama_model_short(model_name)
+        is_hf = model_name.startswith("hf/")
+        short_name = model_name.replace("hf/", "") if is_hf else _ollama_model_short(model_name)
 
         # Check for existing active job for same model
         now = time.time()
@@ -495,11 +565,164 @@ class ModelManager:
                     return {"status": "already_downloaded", "model": short_name, "job_id": job.job_id}
 
         job_id = str(uuid4())
-        job = DownloadJob(job_id=job_id, model_name=short_name, message="Starting download...")
+        job = DownloadJob(job_id=job_id, model_name=short_name, message="Starting download...", url=url)
         _download_jobs[job_id] = job
 
-        asyncio.create_task(self._run_download(job_id, short_name))
+        if is_hf:
+            asyncio.create_task(self._run_hf_download(job_id, short_name))
+        else:
+            asyncio.create_task(self._run_download(job_id, short_name))
         return {"success": True, "job_id": job_id, "model": short_name}
+
+
+    def pause_download(self, job_id: str) -> bool:
+        job = _download_jobs.get(job_id)
+        if job and job.status == "downloading":
+            job.paused = True
+            job.status = "paused"
+            job.message = "Download paused"
+            return True
+        return False
+
+    def resume_download(self, job_id: str) -> bool:
+        job = _download_jobs.get(job_id)
+        if job and job.status == "paused":
+            job.paused = False
+            job.status = "downloading"
+            if job.url:
+                asyncio.create_task(self._run_hf_download(job_id, job.model_name))
+            return True
+        return False
+
+    async def _run_hf_download(self, job_id: str, filename: str) -> None:
+        job = _download_jobs.get(job_id)
+        if not job or not job.url:
+            return
+            
+        filepath = (self.models_dir / filename).resolve()
+        
+        # Prevent path traversal
+        if not str(filepath).startswith(str(self.models_dir.resolve())):
+            logger.error("Path traversal attempt detected in download")
+            job.status = "failed"
+            job.error = "Invalid filename path"
+            return
+            
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        part_filepath = filepath.with_suffix(filepath.suffix + '.download')
+        job.filepath = str(part_filepath)
+        
+        headers = {}
+        file_mode = "wb"
+        downloaded = 0
+        
+        if part_filepath.exists():
+            downloaded = part_filepath.stat().st_size
+            headers["Range"] = f"bytes={downloaded}-"
+            file_mode = "ab"
+            
+        job.downloaded_bytes = downloaded
+        job.status = "downloading"
+        job.started_at = time.time()
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                async with client.stream("GET", job.url, headers=headers, follow_redirects=True) as response:
+                    
+                    if response.status_code not in (200, 206):
+                        job.status = "failed"
+                        job.error = f"HTTP {response.status_code}"
+                        return
+                        
+                    total = int(response.headers.get("Content-Length", 0))
+                    
+                    # If server returns 200 instead of 206, it ignored our Range header.
+                    # We must restart the download from scratch to avoid corruption.
+                    if response.status_code == 200 and downloaded > 0:
+                        logger.warning(f"Server ignored Range request for {filename}. Restarting download.")
+                        downloaded = 0
+                        file_mode = "wb"
+                        
+                    if response.status_code == 206:
+                        total += downloaded
+                    
+                    job.total_bytes = total
+                    
+                    last_speed_update = time.time()
+                    bytes_since_update = 0
+                    async with aiofiles.open(part_filepath, file_mode) as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            if job.cancelled:
+                                job.status = "cancelled"
+                                return
+                            if job.paused:
+                                job.status = "paused"
+                                return
+                                
+                            await f.write(chunk)
+                            chunk_len = len(chunk)
+                            downloaded += chunk_len
+                            bytes_since_update += chunk_len
+                            job.downloaded_bytes = downloaded
+                            
+                            if total > 0:
+                                job.progress = int((downloaded / total) * 100)
+                                job.progress_percent = round((downloaded / total) * 100, 1)
+                                
+                            now = time.time()
+                            if now - last_speed_update > 0.5:
+                                dt = now - last_speed_update
+                                speed_bps = bytes_since_update / dt
+                                job.speed_mbps = round(speed_bps / (1024 * 1024), 2)
+                                if job.speed_mbps > 0 and total > downloaded:
+                                    job.eta_seconds = int((total - downloaded) / speed_bps)
+                                    
+                                bytes_since_update = 0
+                                last_speed_update = now
+                                job.last_progress_at = now
+                                
+                                msg = f"Downloading {filename}... {job.progress_percent}%"
+                                if job.speed_mbps > 0:
+                                    msg += f" ({job.speed_mbps} MB/s) - ETA: {job.eta_seconds}s"
+                                job.message = msg
+                                
+            job.status = "completed"
+            job.progress = 100
+            job.progress_percent = 100.0
+            job.completed_at = time.time()
+            job.message = "Download completed"
+            
+            if part_filepath.exists():
+                part_filepath.rename(filepath)
+                job.filepath = str(filepath)
+
+            # Register with Ollama so the model can be used for inference
+            try:
+                model_name_for_ollama = filename.rsplit('.', 1)[0]
+                if model_name_for_ollama:
+                    modelfile_content = f"FROM {filepath}\n"
+                    modelfile_path = filepath.with_suffix('.Modelfile')
+                    modelfile_path.write_text(modelfile_content)
+
+                    proc = await asyncio.create_subprocess_exec(
+                        "ollama", "create", model_name_for_ollama, "-f", str(modelfile_path),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, stderr = await proc.communicate()
+                    modelfile_path.unlink(missing_ok=True)
+
+                    if proc.returncode == 0:
+                        logger.info(f"Registered GGUF {filename} as Ollama model '{model_name_for_ollama}'")
+                    else:
+                        logger.warning(f"Failed to register GGUF with Ollama: {stderr.decode()}")
+            except Exception as e:
+                logger.warning(f"Failed to create Ollama model from GGUF {filename}: {e}")
+
+        except Exception as e:
+            job.status = "failed"
+            job.error = str(e)
+            logger.error(f"HF download failed: {e}")
 
     async def _run_download(self, job_id: str, short_name: str) -> None:
         job = _download_jobs.get(job_id)
