@@ -1154,9 +1154,14 @@ class ModelManager:
             name_no_prefix = local_model.replace("ollama/", "").replace("lmstudio/", "")
             parts = name_no_prefix.split(":")
             base_name = parts[0]
+            available = mr._get_available_models()
             for i, suffix in enumerate(["7b", "70b"], start=1):
                 if i < len(CAR_TIERS):
-                    CAR_TIERS[i]["model"] = f"{base_name}:{suffix}" if ":" in name_no_prefix else f"{base_name}-{suffix}"
+                    candidate = f"{base_name}:{suffix}" if ":" in name_no_prefix else f"{base_name}-{suffix}"
+                    if any(candidate in m for m in available):
+                        CAR_TIERS[i]["model"] = candidate
+                    else:
+                        CAR_TIERS[i]["model"] = local_model
 
             byok_model = self.config.models.byok_model
             if byok_model:
