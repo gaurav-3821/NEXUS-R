@@ -6,7 +6,7 @@ import { SearchBar } from '../ui/SearchBar';
 import { SettingsNavigation } from './ui/SettingsNavigation';
 import { 
   Settings, Box, Key, Palette, Wrench, Database, Shield, Zap, Code, Link, CloudOff, Info, 
-  RefreshCw, Plus, ChevronRight, Eye, EyeOff, CheckCircle2, Trash2, Bot, Globe, Cpu, Network,
+  RefreshCw, Plus, ChevronRight, Eye, EyeOff, CheckCircle2, Trash2, Network,
   ExternalLink, AlertCircle, Loader2, Lock, Copy
 } from 'lucide-react';
 import clsx from 'clsx';
@@ -14,33 +14,70 @@ import clsx from 'clsx';
 import { useEffect } from 'react';
 import { useProvidersStore } from '../../store/providersStore';
 
+const PROVIDER_LOGOS: Record<string, React.ReactNode> = {
+  openai: (
+    <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3.6c1.9 0 3.6 1.1 4.3 2.8l-1.9 1.1c-.3-.7-1-1.2-1.8-1.2-.6 0-1.2.3-1.5.8L9.3 7.7c.7-1.3 2-2.1 3.5-2.1H12zm-3.8 4.3l1.9-1.1c.3.7 1 1.2 1.8 1.2.6 0 1.2-.3 1.5-.8l1.9 1.1c-.7 1.3-2 2.1-3.5 2.1-1.4 0-2.7-.8-3.4-2.1l-.2-.4zm7.6 0c.7 1.3 0 2.9-1.3 3.6l-1.9-1.1c.3-.7 0-1.5-.7-1.8l-1.9 1.1c.7 1.3 2 2.1 3.5 2.1 1.4 0 2.7-.8 3.4-2.1l.2-.4c.5-1 0-2.2-1-2.7l-1.3.3z" fill="currentColor"/>
+    </svg>
+  ),
+  anthropic: (
+    <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3 14h-2l-1-3H9l-1 3H6l3.5-9h2L15 16zm-3.5-4.5L12 9l1.5 2.5h-3z" fill="currentColor"/>
+    </svg>
+  ),
+  groq: (
+    <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+      <path d="M12 2L4 8v8l8 6 8-6V8l-8-6zm-1 12.5V9l5 3-5 3.5z" fill="currentColor"/>
+      <path d="M11 9v5.5L16 12l-5-3z" fill="currentColor" opacity="0.5"/>
+    </svg>
+  ),
+  google: (
+    <svg viewBox="0 0 24 24" width="20" height="20">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  ),
+  openrouter: (
+    <svg viewBox="0 0 24 24" fill="none" width="20" height="20">
+      <circle cx="12" cy="5" r="2.5" fill="currentColor"/>
+      <circle cx="5" cy="19" r="2.5" fill="currentColor"/>
+      <circle cx="19" cy="19" r="2.5" fill="currentColor"/>
+      <line x1="12" y1="7.5" x2="6.5" y2="16.5" stroke="currentColor" strokeWidth="1.5"/>
+      <line x1="12" y1="7.5" x2="17.5" y2="16.5" stroke="currentColor" strokeWidth="1.5"/>
+      <line x1="7.5" y1="19" x2="16.5" y2="19" stroke="currentColor" strokeWidth="1.5"/>
+    </svg>
+  ),
+};
+
 const PROVIDER_META: Record<string, { icon: React.ReactNode; gradient: string; docsUrl: string; description: string }> = {
   openai: {
-    icon: <Bot size={20} />,
+    icon: PROVIDER_LOGOS.openai,
     gradient: 'from-emerald-500 to-emerald-600',
     docsUrl: 'https://platform.openai.com/api-keys',
     description: 'GPT-4, GPT-4o, GPT-3.5, DALL-E, Whisper'
   },
   anthropic: {
-    icon: <Cpu size={20} />,
+    icon: PROVIDER_LOGOS.anthropic,
     gradient: 'from-orange-500 to-orange-600',
     docsUrl: 'https://console.anthropic.com/settings/keys',
     description: 'Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku'
   },
   groq: {
-    icon: <Zap size={20} />,
+    icon: PROVIDER_LOGOS.groq,
     gradient: 'from-red-500 to-red-600',
     docsUrl: 'https://console.groq.com/keys',
     description: 'Mixtral, Llama 3, Gemma, Whisper'
   },
   google: {
-    icon: <Globe size={20} />,
+    icon: PROVIDER_LOGOS.google,
     gradient: 'from-blue-500 to-blue-600',
     docsUrl: 'https://aistudio.google.com/apikey',
     description: 'Gemini 1.5 Pro, Gemini 1.5 Flash'
   },
   openrouter: {
-    icon: <Network size={20} />,
+    icon: PROVIDER_LOGOS.openrouter,
     gradient: 'from-indigo-500 to-purple-600',
     docsUrl: 'https://openrouter.ai/keys',
     description: '200+ models, reasoning tokens, unified billing'
