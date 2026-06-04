@@ -101,6 +101,9 @@ class SemanticMemoryEngine:
         self._init_lock = asyncio.Lock()
         self._db: aiosqlite.Connection | None = None
         self._embed_dim: int | None = None
+        self._embed_cache: dict[str, list[float]] = {}
+        self._embed_cache_order: list[str] = []
+        self._injection_cache: dict[str, tuple[float, str]] = {}
 
     async def initialize(self) -> None:
         """Create the semantic_memories table if it doesn't exist."""
@@ -158,6 +161,9 @@ class SemanticMemoryEngine:
         
         Falls back to simple TF-IDF-like hash vector if Ollama is unavailable.
         """
+        if text in self._embed_cache:
+            return self._embed_cache[text]
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
@@ -170,12 +176,25 @@ class SemanticMemoryEngine:
                     if embedding:
                         if self._embed_dim is None:
                             self._embed_dim = len(embedding)
+                        
+                        self._embed_cache[text] = embedding
+                        self._embed_cache_order.append(text)
+                        if len(self._embed_cache_order) > 100:
+                            oldest = self._embed_cache_order.pop(0)
+                            self._embed_cache.pop(oldest, None)
+                        
                         return embedding
         except Exception as e:
             logger.debug("Ollama embedding failed, using fallback: %s", e)
 
         # Fallback: deterministic hash-based vector (for offline operation)
-        return self._fallback_embed(text)
+        fallback = self._fallback_embed(text)
+        self._embed_cache[text] = fallback
+        self._embed_cache_order.append(text)
+        if len(self._embed_cache_order) > 100:
+            oldest = self._embed_cache_order.pop(0)
+            self._embed_cache.pop(oldest, None)
+        return fallback
 
     def _fallback_embed(self, text: str, dim: int = 384) -> list[float]:
         """Simple deterministic embedding fallback using character trigram hashing."""
@@ -533,6 +552,17 @@ class SemanticMemoryEngine:
         Returns a formatted string ready for injection into the LLM prompt,
         or empty string if no relevant memories found.
         """
+        # Skip for trivial/short messages to save massive latency
+        if len(query.split()) < 5:
+            return ""
+
+        # Check 5s TTL cache
+        cache_key = f"{conversation_id}:{query}:{max_memories}"
+        if cache_key in self._injection_cache:
+            mtime, result = self._injection_cache[cache_key]
+            if time.time() - mtime < 5.0:
+                return result
+
         memories = await self.recall(
             query, top_k=max_memories, conversation_id=conversation_id
         )
@@ -547,7 +577,15 @@ class SemanticMemoryEngine:
             lines.append(f"- ({sim_pct}% match, {age_str}) {content}")
 
         lines.append("[/CONTEXTUAL MEMORY]")
-        return "\n".join(lines)
+        result = "\n".join(lines)
+        self._injection_cache[cache_key] = (time.time(), result)
+        
+        # Keep cache size bounded (max 50)
+        if len(self._injection_cache) > 50:
+            oldest = min(self._injection_cache.keys(), key=lambda k: self._injection_cache[k][0])
+            del self._injection_cache[oldest]
+            
+        return result
 
     @staticmethod
     def _format_age(age_days: float) -> str:

@@ -54,6 +54,10 @@ def router_mock():
         {"text": " This is a test response.", "done": True},
     )
     r.complete.return_value = {"text": "Sync response", "cost": 0.002, "model_name": "groq/llama3"}
+    
+    import os
+    from nexus_r.config import NEXUSConfig
+    r.config = NEXUSConfig.default(os.getcwd())
     return r
 
 
@@ -89,11 +93,11 @@ def client(event_store, chat_handler):
 
 class TestChatAPI:
     def test_chat_send_no_auth(self, client):
-        resp = client.post("/api/v1/chat?message=hello")
+        resp = client.post("/api/v1/chat", json={"message": "hello"})
         assert resp.status_code == 401
 
     def test_chat_send_with_auth(self, client):
-        resp = client.post("/api/v1/chat?token=chat-test-token&message=Hello+world")
+        resp = client.post("/api/v1/chat?token=chat-test-token", json={"message": "Hello world"})
         assert resp.status_code == 200
         data = resp.json()
         assert "message_id" in data
@@ -102,12 +106,12 @@ class TestChatAPI:
         assert "content" in data
 
     def test_chat_send_empty_message_rejected(self, client):
-        resp = client.post("/api/v1/chat?token=chat-test-token&message=")
+        resp = client.post("/api/v1/chat?token=chat-test-token", json={"message": ""})
         assert resp.status_code == 422
 
     def test_chat_send_with_conversation_id(self, client, event_store):
         resp = client.post(
-            "/api/v1/chat?token=chat-test-token&message=First&conversation_id=conv_001"
+            "/api/v1/chat?token=chat-test-token", json={"message": "First", "conversation_id": "conv_001"}
         )
         assert resp.status_code == 200
         data = resp.json()
@@ -120,7 +124,7 @@ class TestChatAPI:
     def test_chat_conversations_empty(self, client):
         resp = client.get("/api/v1/chat/conversations?token=chat-test-token")
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json() == {"conversations": []}
 
     def test_chat_conversations_with_data(self, client, event_store):
         event_store.events.append(Event(
@@ -134,9 +138,9 @@ class TestChatAPI:
         ))
         resp = client.get("/api/v1/chat/conversations?token=chat-test-token")
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["conversations"]
         assert len(data) == 1
-        assert data[0]["conversation_id"] == "conv_001"
+        assert data[0]["id"] == "conv_001"
 
     def test_chat_history_no_auth(self, client):
         resp = client.get("/api/v1/chat/history")
@@ -145,7 +149,7 @@ class TestChatAPI:
     def test_chat_history_empty(self, client):
         resp = client.get("/api/v1/chat/history?token=chat-test-token")
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json() == {"messages": []}
 
     def test_chat_history_with_messages(self, client, event_store):
         event_store.events.append(Event(
@@ -168,7 +172,7 @@ class TestChatAPI:
         ))
         resp = client.get("/api/v1/chat/history?token=chat-test-token")
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["messages"]
         assert len(data) == 2
 
     def test_chat_history_filter_by_conversation(self, client, event_store):
@@ -192,7 +196,7 @@ class TestChatAPI:
             "/api/v1/chat/history?token=chat-test-token&conversation_id=conv_001"
         )
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["messages"]
         assert len(data) == 1
         assert data[0]["content"] == "In conv 1"
 
@@ -214,7 +218,7 @@ class TestChatAPI:
         assert resp.status_code == 404
 
     def test_chat_send_creates_conversation_event(self, client, event_store):
-        resp = client.post("/api/v1/chat?token=chat-test-token&message=New+conversation")
+        resp = client.post("/api/v1/chat?token=chat-test-token", json={"message": "New conversation"})
         assert resp.status_code == 200
         data = resp.json()
         assert "message_id" in data
@@ -237,7 +241,7 @@ class TestChatAPI:
             ))
         resp = client.get("/api/v1/chat/conversations?token=chat-test-token&limit=2&offset=0")
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["conversations"]
         assert len(data) == 2
 
     def test_chat_history_pagination(self, client, event_store):
@@ -256,5 +260,5 @@ class TestChatAPI:
             "/api/v1/chat/history?token=chat-test-token&conversation_id=conv_001&limit=3&offset=0"
         )
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["messages"]
         assert len(data) == 3

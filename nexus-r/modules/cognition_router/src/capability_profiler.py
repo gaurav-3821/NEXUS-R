@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 CAR_TIERS: list[dict] = [
     {"name": "local_7b", "model": "ollama/qwen2.5:1.5b-instruct", "cost": 0.001, "kind": "local", "mock": "mock-local"},
     {"name": "local_14b", "model": "ollama/qwen2.5:7b", "cost": 0.002, "kind": "local", "mock": "mock-local"},
-    {"name": "local_70b", "model": "ollama/llama3:70b", "cost": 0.005, "kind": "local", "mock": "mock-local"},
+    {"name": "local_heavy", "model": "ollama/deepseek-r1:14b", "cost": 0.005, "kind": "local", "mock": "mock-local"},
     {"name": "byok_budget", "model": "groq/llama-3.3-70b-versatile", "cost": 0.02, "kind": "byok", "mock": "mock-byok"},
     {"name": "byok_frontier", "model": "groq/mixtral-8x7b-32768", "cost": 0.10, "kind": "byok", "mock": "mock-byok"},
     {"name": "managed_premium", "model": "managed/human-review", "cost": 0.50, "kind": "managed", "mock": "mock-managed"},

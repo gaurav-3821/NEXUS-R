@@ -13,15 +13,15 @@ import {
   RefreshCw, ArrowLeft, Server, Globe, ChevronDown, AlertCircle, Bot
 } from 'lucide-react';
 import clsx from 'clsx';
-import { ModelDownloadCenterModal } from './ModelDownloadCenterModal';
+import { ModelDiscoveryCenter } from './ModelDiscoveryCenter';
 import { Download } from 'lucide-react';
 
 export default function ModelsPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { 
-    currentConfig, cloudOptions, localModels, routingProfile, isLoading, error, downloadJobs,
-    loadModels, updateConfig, updateRoutingProfile, startModelDownload, loadDownloadJobs
+    currentConfig, cloudOptions, localModels, routingProfile, isLoading, error, downloadJobs, providerModels,
+    loadModels, updateConfig, updateRoutingProfile, startModelDownload, loadDownloadJobs, fetchProviderModels
   } = useModelsStore();
   const activeTab = location.pathname.split('/').pop() || 'models';
   const [isDownloadCenterOpen, setIsDownloadCenterOpen] = useState(false);
@@ -32,6 +32,52 @@ export default function ModelsPage() {
     const interval = setInterval(loadDownloadJobs, 3000);
     return () => clearInterval(interval);
   }, [loadModels, loadDownloadJobs]);
+
+  useEffect(() => {
+    cloudOptions.forEach(opt => {
+      if (opt.value !== 'none' && opt.api_key_configured && !providerModels[opt.value]) {
+        fetchProviderModels(opt.value);
+      }
+    });
+  }, [cloudOptions, fetchProviderModels, providerModels]);
+
+  const allCloudModels = cloudOptions
+    .filter(o => o.value !== 'none' && o.api_key_configured)
+    .flatMap(o => (providerModels[o.value] || []).map(m => ({ 
+      id: `${o.value}/${m.name}`, 
+      label: `${m.name} (${o.label})`, 
+      provider: o.value 
+    })));
+
+  const getCloudProviderForModel = (modelId: string) => {
+    return allCloudModels.find(m => m.id === modelId)?.provider || null;
+  };
+
+  const getModelStatus = (modelId: string | undefined): 'available' | 'downloading' | 'unavailable' | 'none' => {
+    if (!modelId) return 'none';
+    if (localModels.some(m => m.name === modelId)) return 'available';
+    const cloudProv = getCloudProviderForModel(modelId);
+    if (cloudProv) {
+      const opt = cloudOptions.find(o => o.value === cloudProv);
+      return opt?.api_key_configured ? 'available' : 'unavailable';
+    }
+    if (downloadJobs?.find(j => j.model_name === modelId)) return 'downloading';
+    return 'unavailable';
+  };
+
+  const getActionLabel = (modelId: string | undefined) => {
+    if (!modelId) return undefined;
+    const st = getModelStatus(modelId);
+    if (st === 'available') return getCloudProviderForModel(modelId) ? 'Connected' : undefined;
+    if (st === 'unavailable') return getCloudProviderForModel(modelId) ? 'Configure API Key' : 'Download';
+    return undefined;
+  };
+
+  const handleAction = (modelId: string | undefined) => {
+    if (!modelId) return;
+    if (getCloudProviderForModel(modelId)) navigate('/settings/api-keys');
+    else startModelDownload(modelId);
+  };
 
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={18} /> },
@@ -178,27 +224,15 @@ export default function ModelsPage() {
                   currentValue={routingProfile?.reasoning || 'Unknown'}
                   options={[
                     ...localModels.map(m => ({ id: m.name, label: m.name })),
-                    ...cloudOptions.filter(o => o.value !== 'none').map(o => ({ id: o.model, label: `${o.label} (${o.model})` }))
+                    ...allCloudModels
                   ]}
                   emptyMessage="No models available"
                   onSelect={(val) => updateRoutingProfile({ reasoning: val })}
-                  status={(() => {
-                    const st = routingProfile?.reasoning ? localModels.some(m => m.name === routingProfile.reasoning) ? 'available' : cloudOptions.find(o => o.model === routingProfile.reasoning) ? ((cloudOptions.find(o => o.model === routingProfile.reasoning) as any).api_key_configured ? 'available' : 'unavailable') : downloadJobs?.find(j => j.model_name === routingProfile.reasoning) ? 'downloading' : 'unavailable' : 'none';
-                    return st as 'available' | 'downloading' | 'unavailable' | 'none';
-                  })()}
+                  status={getModelStatus(routingProfile?.reasoning)}
                   actionInProgress={downloadJobs?.some(j => j.model_name === routingProfile?.reasoning)}
                   actionProgress={downloadJobs?.find(j => j.model_name === routingProfile?.reasoning)?.progress_percent}
-                  actionLabel={(() => {
-                    if (!routingProfile?.reasoning) return undefined;
-                    const st = routingProfile?.reasoning ? localModels.some(m => m.name === routingProfile.reasoning) ? 'available' : cloudOptions.find(o => o.model === routingProfile.reasoning) ? ((cloudOptions.find(o => o.model === routingProfile.reasoning) as any).api_key_configured ? 'available' : 'unavailable') : downloadJobs?.find(j => j.model_name === routingProfile.reasoning) ? 'downloading' : 'unavailable' : 'none';
-                    if (st === 'available') return cloudOptions.find(o => o.model === routingProfile.reasoning) ? 'Connected' : undefined;
-                    if (st === 'unavailable') return cloudOptions.find(o => o.model === routingProfile.reasoning) ? 'Configure API Key' : 'Download';
-                    return undefined;
-                  })()}
-                  onAction={() => {
-                    if (cloudOptions.find(o => o.model === routingProfile?.reasoning)) navigate('/settings/api-keys');
-                    else if (routingProfile?.reasoning) startModelDownload(routingProfile.reasoning);
-                  }}
+                  actionLabel={getActionLabel(routingProfile?.reasoning)}
+                  onAction={() => handleAction(routingProfile?.reasoning)}
                 />
 
                 <ModelSelectionRow 
@@ -210,27 +244,15 @@ export default function ModelsPage() {
                   currentValue={routingProfile?.coding || 'Unknown'}
                   options={[
                     ...localModels.map(m => ({ id: m.name, label: m.name })),
-                    ...cloudOptions.filter(o => o.value !== 'none').map(o => ({ id: o.model, label: `${o.label} (${o.model})` }))
+                    ...allCloudModels
                   ]}
                   emptyMessage="No models available"
                   onSelect={(val) => updateRoutingProfile({ coding: val })}
-                  status={(() => {
-                    const st = routingProfile?.coding ? localModels.some(m => m.name === routingProfile.coding) ? 'available' : cloudOptions.find(o => o.model === routingProfile.coding) ? ((cloudOptions.find(o => o.model === routingProfile.coding) as any).api_key_configured ? 'available' : 'unavailable') : downloadJobs?.find(j => j.model_name === routingProfile.coding) ? 'downloading' : 'unavailable' : 'none';
-                    return st as 'available' | 'downloading' | 'unavailable' | 'none';
-                  })()}
+                  status={getModelStatus(routingProfile?.coding)}
                   actionInProgress={downloadJobs?.some(j => j.model_name === routingProfile?.coding)}
                   actionProgress={downloadJobs?.find(j => j.model_name === routingProfile?.coding)?.progress_percent}
-                  actionLabel={(() => {
-                    if (!routingProfile?.coding) return undefined;
-                    const st = routingProfile?.coding ? localModels.some(m => m.name === routingProfile.coding) ? 'available' : cloudOptions.find(o => o.model === routingProfile.coding) ? ((cloudOptions.find(o => o.model === routingProfile.coding) as any).api_key_configured ? 'available' : 'unavailable') : downloadJobs?.find(j => j.model_name === routingProfile.coding) ? 'downloading' : 'unavailable' : 'none';
-                    if (st === 'available') return cloudOptions.find(o => o.model === routingProfile.coding) ? 'Connected' : undefined;
-                    if (st === 'unavailable') return cloudOptions.find(o => o.model === routingProfile.coding) ? 'Configure API Key' : 'Download';
-                    return undefined;
-                  })()}
-                  onAction={() => {
-                    if (cloudOptions.find(o => o.model === routingProfile?.coding)) navigate('/settings/api-keys');
-                    else if (routingProfile?.coding) startModelDownload(routingProfile.coding);
-                  }}
+                  actionLabel={getActionLabel(routingProfile?.coding)}
+                  onAction={() => handleAction(routingProfile?.coding)}
                 />
 
                 <ModelSelectionRow 
@@ -242,27 +264,15 @@ export default function ModelsPage() {
                   currentValue={routingProfile?.general || 'Unknown'}
                   options={[
                     ...localModels.map(m => ({ id: m.name, label: m.name })),
-                    ...cloudOptions.filter(o => o.value !== 'none').map(o => ({ id: o.model, label: `${o.label} (${o.model})` }))
+                    ...allCloudModels
                   ]}
                   emptyMessage="No models available"
                   onSelect={(val) => updateRoutingProfile({ general: val })}
-                  status={(() => {
-                    const st = routingProfile?.general ? localModels.some(m => m.name === routingProfile.general) ? 'available' : cloudOptions.find(o => o.model === routingProfile.general) ? ((cloudOptions.find(o => o.model === routingProfile.general) as any).api_key_configured ? 'available' : 'unavailable') : downloadJobs?.find(j => j.model_name === routingProfile.general) ? 'downloading' : 'unavailable' : 'none';
-                    return st as 'available' | 'downloading' | 'unavailable' | 'none';
-                  })()}
+                  status={getModelStatus(routingProfile?.general)}
                   actionInProgress={downloadJobs?.some(j => j.model_name === routingProfile?.general)}
                   actionProgress={downloadJobs?.find(j => j.model_name === routingProfile?.general)?.progress_percent}
-                  actionLabel={(() => {
-                    if (!routingProfile?.general) return undefined;
-                    const st = routingProfile?.general ? localModels.some(m => m.name === routingProfile.general) ? 'available' : cloudOptions.find(o => o.model === routingProfile.general) ? ((cloudOptions.find(o => o.model === routingProfile.general) as any).api_key_configured ? 'available' : 'unavailable') : downloadJobs?.find(j => j.model_name === routingProfile.general) ? 'downloading' : 'unavailable' : 'none';
-                    if (st === 'available') return cloudOptions.find(o => o.model === routingProfile.general) ? 'Connected' : undefined;
-                    if (st === 'unavailable') return cloudOptions.find(o => o.model === routingProfile.general) ? 'Configure API Key' : 'Download';
-                    return undefined;
-                  })()}
-                  onAction={() => {
-                    if (cloudOptions.find(o => o.model === routingProfile?.general)) navigate('/settings/api-keys');
-                    else if (routingProfile?.general) startModelDownload(routingProfile.general);
-                  }}
+                  actionLabel={getActionLabel(routingProfile?.general)}
+                  onAction={() => handleAction(routingProfile?.general)}
                 />
               </div>
             </div>
@@ -318,7 +328,7 @@ export default function ModelsPage() {
           </>
         )}
       </div>
-      {isDownloadCenterOpen && <ModelDownloadCenterModal onClose={() => setIsDownloadCenterOpen(false)} />}
+      {isDownloadCenterOpen && <ModelDiscoveryCenter onClose={() => setIsDownloadCenterOpen(false)} />}
     </SettingsLayout>
   );
 }

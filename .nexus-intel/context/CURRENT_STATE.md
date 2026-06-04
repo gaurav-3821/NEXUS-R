@@ -3,12 +3,14 @@
 This file is a short orientation aid, not a source of truth. Refresh it when a
 task starts or finishes. Verify important details against Git and source code.
 
-- Updated: `2026-06-02`
+- Updated: `2026-06-03`
 - Current branch observed during scaffold: `ui-redesign`
-- Active intelligence task: `None`
+- Active intelligence task: `TASK-0001`
 - Existing in-progress work: The worktree already contains UI, web backend, and
-  built static asset changes that predate this scaffold.
+  built static asset changes that predate the documentation refresh task.
 - Collaboration control plane: Initial `.nexus-intel/` scaffold created.
+- Current repo-facing refresh: root docs, package docs, docs index, and ignore
+  rules were updated without modifying the existing in-progress product code.
 - Open documentation questions: `ASM-0001`, `ASM-0002`, `ASM-0003`
 
 ## Next Session Checklist

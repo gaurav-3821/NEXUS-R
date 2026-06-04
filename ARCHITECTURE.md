@@ -1,119 +1,100 @@
 # NEXUS-R Architecture
 
-**Five subsystems. Six modules. One cross-cutting layer. No orchestration theater.**
+This document describes the current repository-level architecture: what modules
+exist, how they fit together, and where the main execution boundaries are.
 
-## Design Principles
+## Runtime Shape
 
-1.  **Event-sourced everything** — Every state change is an immutable event. The Event Store is the single source of truth.
-2.  **MCP everywhere** — All tool integrations via Model Context Protocol. No custom connectors.
-3.  **LiteLLM for model abstraction** — Unified interface for 100+ providers. We do not build our own provider router.
-4.  **Deny-first security** — ML risk classifier embedded in execution. Default is deny; allow is earned.
-5.  **Privacy as hard constraint** — Local models always preferred when privacy flag set. Not a preference.
-6.  **Explicit generalization bounds** — No workflow applied without >90% proven success rate.
-7.  **CPC short-circuit before routing** — Check cache first. Primary cost-saving mechanism.
-8.  **Inline verification** — Each step has a verify phase. Catches errors at point of occurrence.
-
----
-
-## Subsystem Overview
-
-| # | Subsystem | Module | Key Responsibilities |
-| :--- | :--- | :--- | :--- |
-| **1** | **Input Gateway** | Intent Parser | Intent classification, confidence estimation, parameter extraction, complexity scoring (T1–T4) |
-| **2** | **Cognition Router** | ISE + CAR | Capability profiling, Pareto routing (cost × latency × privacy), CPC short-circuit, adaptive fallback, quality tracking |
-| **3** | **Execution Sandbox** | Execution Engine | Sandboxed agent loop via MCP, inline verification, ML risk classification, permission tiers 1–4, event-sourced traces |
-| **4** | **State Core** | Memory Store | Event log (append-only), 3-tier memory (volatile / durable / identity), causal chaining, vector embeddings, projected views |
-| **5** | **Workflow Engine** | CPC / ETD | Trace recording, distillation, generalization verification (>90%), parameterization, conservative application (>85%), invalidation |
-| **—** | **Trust Layer** | — *(cross-cutting)* | Permission enforcement, sandbox isolation, audit log, cost dashboard, rollback, secret handling |
-
-### Data Flow
+NEXUS-R is structured as a modular Python runtime with a separate frontend
+source tree and a backend-served static dashboard build.
 
 ```text
 User Input
-  ↓
-[Input Gateway] → IntentResult (type, confidence, tier, parameters)
-  ↓
-[Cognition Router] → CPC Check → Cache hit? → Execute ETD (fast, cheap)
-  ↓ Cache miss
-[CAR] → Route to optimal model (local/BYOK) based on tier, privacy, cost cap
-  ↓
-[Execution Sandbox] → MCP tool loop with inline verification
-  ↓
-[State Core] → Log every action as immutable CausalEvent
-  ↓
-[Workflow Engine] → Record trace → Distill → Verify generalization → Cache ETD
-  ↓
-Result + Cost + Audit ID
+  -> CLI or Web UI
+  -> Input Gateway
+  -> Cognition Router
+  -> Trust checks
+  -> Execution Sandbox or model completion
+  -> State Core + Session Manager
+  -> Workflow trace recording
+  -> Result, history, and cost views
 ```
 
----
+## Main Components
 
-## Key Subsystem Details
+### Foundation
 
-### 1. Input Gateway
-**Responsibility:** Transform natural language into structured intent.
+`nexus-r/foundation/nexus_r/`
 
-**Complexity Scoring (T1–T4):**
-*   **Reasoning depth (40%)**: Logical connectors, ambiguity, planning need
-*   **Knowledge breadth (30%)**: Domain specificity, recency requirements
-*   **Tool complexity (30%)**: Number/type of tools, irreversibility
+Shared runtime primitives:
 
-### 2. Cognition Router (CAR)
-**Responsibility:** Select the optimal model and execution path.
-1.  **CPC Check** — Query ETD cache. If similarity >85% and success rate >90%, execute cached workflow at $0.
-2.  **Task Classification** — Score reasoning depth, knowledge breadth, tool complexity → composite T1–T4 tier.
-3.  **Capability Profiling** — Each model maintains dynamic scores, latency percentiles, cost, privacy level.
-4.  **Multi-Objective Routing** — Optimize across capability match, latency, cost, privacy (hard constraint).
-5.  **Adaptive Fallback Chain** — 6 tiers: `local_7b` → `local_14b` → `local_70b` → `BYOK_budget` → `BYOK_frontier` → `managed_premium`.
-6.  **Parallel Probe** — When uncertain, send to T1+T2 simultaneously.
-7.  **De-escalation Learning** — Update classifier if T1 consistently handles T2-classified tasks.
+- configuration loading
+- event and result types
+- telemetry and logging
+- backend startup helpers
+- shared error definitions
+- model registry utilities
 
-### 3. Execution Sandbox
-**Responsibility:** Safely execute tool invocations with verification.
-*   **Terminal:** Docker container with workspace mount only.
-*   **Filesystem:** Scoped to workspace directory. Parent directory traversal blocked.
-*   **Browser (Phase 3):** Isolated Chromium via Playwright. No host filesystem.
-*   **API calls:** Domain whitelisting. Credential injection via SecretRegistry.
+### Modules
 
-**Permission tiers:**
-*   **T1:** Read files, read-only terminal, web search, safe MCP *(Auto)*
-*   **T2:** Write workspace files, sandboxed terminal, HTTP GET approved *(Auto + log)*
-*   **T3:** Arbitrary terminal, external files, HTTP POST/PUT/DELETE, API keys *(User prompt)*
-*   **T4:** Delete files, access secrets, deploy to prod, financial transactions *(Explicit confirm + reason)*
+`nexus-r/modules/`
 
-### 4. State Core (Three-Tier Memory)
-*The Event Store is the single source of truth. All other memory tiers are derived views.*
+- `input_gateway`: parses bounded task intent and extracts parameters
+- `cognition_router`: chooses local or BYOK execution paths and records routing
+  rationale
+- `execution_sandbox`: performs workspace-scoped actions with confinement and
+  deny-first behavior for destructive operations
+- `state_core`: persists events, tracks working state, and stores derived
+  identity/runtime views
+- `workflow_engine`: records causal traces and provides the storage and pipeline
+  surface for workflow reuse
+- `trust_layer`: permission enforcement, cost tracking, secret management, and
+  prompt-risk related controls
+- `session_manager`: crash-safe session catalog and checkpoint resume support
+- `orchestrator`: composes the runtime into an end-to-end task pipeline
+- `cli`: Typer entrypoints for task execution, history, cost, config, and
+  dashboard startup
+- `web_ui`: FastAPI application and static asset serving for the dashboard
 
-1.  **Volatile (Working State):** Current task context, active plan, tool results. *(Dies when task completes)*
-2.  **Durable (Event Store):** Immutable log of all actions, decisions, outcomes. *(Append-only, SQLite)*
-3.  **Identity (User Profile):** Preferences, tool configs, API key refs, classifier weights. *(Encrypted file)*
+### Frontend
 
-**Key features:** Causal chaining (`parent_event_id`), Vector embeddings, Projected views, Compaction.
+`nexus-r/frontend/`
 
-### 5. Workflow Engine (ETD)
-**Core innovation:** Execution Trace Distillation with verified generalization bounds.
+The current frontend source is a React + TypeScript + Vite application. Its
+production build is copied into `nexus-r/modules/web_ui/src/static/`, which the
+backend serves.
 
-**Seven-Stage Pipeline:**
-1.  **Trace Recording** — Sandbox logs every step.
-2.  **Distillation** — Extract minimal causal chain. Drop dead-ends/retries.
-3.  **Generalization Verification** — Test on held-out variants. Admit only if >90% success.
-4.  **Parameterization** — Replace concrete values with typed slots.
-5.  **Retrieval** — Cosine similarity + context gating + ranking.
-6.  **Conservative Application** — Opt-in. Environment match required.
-7.  **Invalidation** — Degrade if failure rate >30%.
+## Execution Boundaries
 
----
+### Model routing
 
-## Research Positioning
-**NEXUS-R ETD novelty claim:** *Execution trace distillation with verified generalization bounds for autonomous workflow reuse.*
+The router is responsible for selecting an execution path based on intent,
+configured models, and runtime constraints. The repo currently includes local
+and BYOK-oriented routing code, along with model registry and download-related
+supporting files.
 
-| Prior Art | What They Do | What NEXUS-R Adds |
-| :--- | :--- | :--- |
-| **FlowMind** | Distill traces to structured workflows | Explicit generalization verification with quantified bounds |
-| **Shepherd** | Per-step snapshots, trajectory compression | Conservative application + causal chaining for provenance |
-| **OpenHands** | 2× cost reduction via summarization | Reusable execution plans (parameterized templates) |
-| **Deep Memory** | 71% token reduction via compression | Workflow reuse (structural templates with verification) |
+### Sandbox
 
----
+The sandbox is designed around workspace confinement. Filesystem and terminal
+actions are scoped to the configured workspace, and destructive operations are
+denied unless explicitly supported by a higher trust tier.
 
-> **The architecture is intentionally flat** — no hierarchical coordination, no orchestration layers, no message buses. Each subsystem communicates through the Event Store. This eliminates synchronization complexity and enables each subsystem to be developed, tested, and deployed independently.
+### Persistence
+
+The event store is the main durable record of runtime actions. Session
+checkpointing layers on top of that to support restart and recovery workflows.
+
+### Workflow capture
+
+Successful and failed executions generate traces that can later support ETD and
+workflow reuse. The repository includes both the trace pipeline and report
+artifacts from prior validation work.
+
+## Supporting Materials
+
+- Product specs: `nexus-r/specs/`
+- Tests: `nexus-r/tests/`
+- Validation and planning reports: `docs/`
+
+Some historic documents still describe earlier phase boundaries. Use them as
+context, not as the final word on what the current source tree implements.

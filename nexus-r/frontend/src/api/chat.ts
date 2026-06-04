@@ -30,14 +30,19 @@ export async function streamChat(
   };
   
   let response = await fetch(url, reqConfig);
-  if (response.status === 403 && import.meta.env.DEV) {
+  if (response.status === 403) {
     clearTokenCache();
     url = `${API_BASE || '/api/v1'}/chat/stream?token=${encodeURIComponent(await getToken())}`;
     response = await fetch(url, reqConfig);
   }
 
   if (!response.ok) {
-    throw new Error(`Stream error: ${response.status}`);
+    let detail = `Stream error: ${response.status}`;
+    try {
+      const errorData = await response.json();
+      if (errorData.detail) detail = errorData.detail;
+    } catch (e) {}
+    throw new Error(detail);
   }
 
   const reader = response.body?.getReader();

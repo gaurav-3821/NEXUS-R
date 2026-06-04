@@ -18,6 +18,7 @@ from uuid import uuid4
 import aiofiles
 import httpx
 from .hf_client import HuggingFaceClient
+from .openrouter_client import OpenRouterClient
 from .gguf_parser import extract_gguf_metadata
 import httpx
 
@@ -29,25 +30,25 @@ _COMPLETED_JOBS_MAX_AGE = 3600  # 1 hour retention
 _ACTIVE_JOB_TIMEOUT = 300  # 5 minutes without progress = stale
 
 CLOUD_PROVIDER_OPTIONS = [
-    {"value": "groq", "label": "Groq (Llama 3.3 70B)", "model": "groq/llama-3.3-70b-versatile",
+    {"value": "groq", "label": "Groq", "base_url": "https://api.groq.com/openai/v1",
      "secret_name": "groq_api_key", "env_var": "NEXUS_GROQ_API_KEY", "cost_per_1k": "$0.59",
      "key_prefix": "gsk_"},
-    {"value": "opencode", "label": "OpenCode (DeepSeek, free tier)", "model": "openai/deepseek-chat",
+    {"value": "opencode", "label": "OpenCode (DeepSeek)", "base_url": "https://api.deepseek.com",
      "secret_name": "opencode_api_key", "env_var": "NEXUS_OPENCODE_API_KEY", "cost_per_1k": "$0.00",
-     "key_prefix": ""},
-    {"value": "openrouter", "label": "OpenRouter (multi-model)", "model": "openrouter/google/gemma-2-9b-it:free",
+     "key_prefix": "sk-"},
+    {"value": "openrouter", "label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1",
      "secret_name": "openrouter_api_key", "env_var": "NEXUS_OPENROUTER_API_KEY", "cost_per_1k": "varies",
-     "key_prefix": ""},
-    {"value": "nvidia_nim", "label": "NVIDIA NIM (free tier)", "model": "nvidia_nim/meta/llama3-70b-instruct",
+     "key_prefix": "sk-or-v1-"},
+    {"value": "nvidia_nim", "label": "NVIDIA NIM", "base_url": "https://integrate.api.nvidia.com/v1",
      "secret_name": "nvidia_nim_api_key", "env_var": "NEXUS_NVIDIA_NIM_API_KEY", "cost_per_1k": "$0.00",
      "key_prefix": "nvapi-"},
-    {"value": "together", "label": "Together AI", "model": "together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+    {"value": "together", "label": "Together AI", "base_url": "https://api.together.xyz/v1",
      "secret_name": "together_api_key", "env_var": "NEXUS_TOGETHER_API_KEY", "cost_per_1k": "$0.10",
      "key_prefix": ""},
-    {"value": "localai", "label": "LocalAI (self-hosted)", "model": "localai/llama",
+    {"value": "localai", "label": "LocalAI", "base_url": "http://127.0.0.1:8080/v1",
      "secret_name": "localai_api_key", "env_var": "NEXUS_LOCALAI_API_KEY", "cost_per_1k": "$0.00",
      "key_prefix": ""},
-    {"value": "none", "label": "None (local only)", "model": "",
+    {"value": "none", "label": "None (local only)", "base_url": "",
      "secret_name": "", "env_var": "", "cost_per_1k": "$0.00",
      "key_prefix": ""},
 ]
@@ -168,6 +169,8 @@ class ModelManager:
         self.models_dir = Path(config.workspace_root) / ".nexus-r" / "models"
         self.models_dir.mkdir(parents=True, exist_ok=True)
         self.hf_client = HuggingFaceClient()
+        self.openrouter_client = OpenRouterClient()
+        self._cloud_models_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
         # Load saved config on startup and apply it to router
         saved = self.load_saved_config()
@@ -177,7 +180,8 @@ class ModelManager:
             if saved.get("cloud_provider"):
                 cloud_config = CLOUD_PROVIDER_MAP.get(saved["cloud_provider"])
                 if cloud_config:
-                    self.config.models.byok_model = cloud_config["model"]
+                    if saved.get("byok_model"):
+                        self.config.models.byok_model = saved["byok_model"]
         
         if self.router:
             self._hot_reload_car()
@@ -213,7 +217,8 @@ class ModelManager:
             else:
                 info = CLOUD_PROVIDER_MAP.get(provider)
                 if info:
-                    self.config.models.byok_model = info["model"]
+                    if saved.get("byok_model"):
+                        self.config.models.byok_model = saved["byok_model"]
                     self.config.models.byok_secret_name = info["secret_name"]
                     self.config.models.byok_api_key_env = info["env_var"]
             changed = True
@@ -294,6 +299,44 @@ class ModelManager:
             "lm_studio": lm_studio_models,
             "gguf": gguf_models,
         }
+
+    async def list_cloud_models(self, provider: str) -> list[dict[str, Any]]:
+        if provider == "none":
+            return []
+            
+        info = CLOUD_PROVIDER_MAP.get(provider)
+        if not info or not info.get("base_url"):
+            return []
+            
+        now = time.time()
+        cached = self._cloud_models_cache.get(provider)
+        if cached and (now - cached[0]) < 300:
+            return cached[1]
+            
+        api_key = ""
+        if self.secret_registry:
+            api_key = self.secret_registry.get_secret(info["secret_name"]) or os.environ.get(info["env_var"], "")
+            
+        if not api_key:
+            return []
+            
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+            
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{info['base_url']}/models", headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    models = data.get("data", [])
+                    result = [{"name": m["id"], "source": provider} for m in models if m.get("id")]
+                    self._cloud_models_cache[provider] = (now, result)
+                    return result
+        except Exception as e:
+            logger.warning(f"Failed to fetch models for {provider}: {e}")
+            
+        return []
 
     @staticmethod
     def _deduplicate_by_name(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -506,45 +549,25 @@ class ModelManager:
         if not info:
             return {"success": False, "error": f"Unknown provider: {provider}"}
         fmt_warning = _check_key_format(provider, api_key)
-        model = info.get("model", "")
-        if not model:
-            return {"success": False, "error": f"No default model for {provider}"}
-
-        # Google uses native API with key in URL
-        if provider == "google":
-            result = await self._test_gemini_native(api_key, model)
-            if fmt_warning:
-                result["warning"] = fmt_warning
-            return result
-
+        
+        # Test fetching models list to validate connection
         try:
-            import litellm
             start = datetime.now(timezone.utc)
-            response = await litellm.acompletion(
-                model=model,
-                api_key=api_key or "sk-no-key-required",
-                messages=[{"role": "user", "content": "Say hello in one word."}],
-                max_tokens=10,
-                timeout=15,
-            )
+            headers = {"Authorization": f"Bearer {api_key}"}
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.get(f"{info['base_url']}/models", headers=headers)
+                
             elapsed = (datetime.now(timezone.utc) - start).total_seconds() * 1000
-            content = response.choices[0].message.content if response.choices else ""
-            result: dict[str, Any] = {"success": True, "latency_ms": round(elapsed, 2), "response": content[:200]}
-            if fmt_warning:
-                result["warning"] = fmt_warning
-            return result
-        except ImportError:
-            return {"success": False, "error": "litellm not installed"}
+            
+            if resp.status_code == 200:
+                result: dict[str, Any] = {"success": True, "latency_ms": round(elapsed, 2), "response": f"Connection verified. Successfully fetched models list."}
+                if fmt_warning:
+                    result["warning"] = fmt_warning
+                return result
+            else:
+                return {"success": False, "error": f"API returned status {resp.status_code}: {resp.text[:200]}"}
         except Exception as e:
-            classified = _classify_litellm_error(e)
-            logger.warning("Cloud connection test for %s: %s", provider, classified)
-            result = {"success": False}
-            result["error"] = classified["error"]
-            result["error_type"] = classified["error_type"]
-            result["detail"] = classified.get("detail", "")
-            if fmt_warning:
-                result["warning"] = fmt_warning
-            return result
+            return {"success": False, "error": f"Connection failed: {str(e)[:200]}"}
 
     # --- Download job system ---
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 
 import json
 import logging
@@ -25,6 +26,8 @@ class IdentityStore:
         self.key_path = self.state_dir / "identity.key"
         self.data_path = self.state_dir / "identity.enc"
         self._fernet = Fernet(self._load_or_create_key())
+        self._cache = None
+        self._cache_mtime = 0.0
 
     def _load_or_create_key(self) -> bytes:
         if self.key_path.exists():
@@ -38,8 +41,15 @@ class IdentityStore:
         if not self.data_path.exists():
             return {}
         try:
+            mtime = self.data_path.stat().st_mtime
+            if self._cache is not None and self._cache_mtime == mtime:
+                return copy.deepcopy(self._cache)
+                
             payload = self._fernet.decrypt(self.data_path.read_bytes())
-            return json.loads(payload.decode("utf-8"))
+            data = json.loads(payload.decode("utf-8"))
+            self._cache = data
+            self._cache_mtime = mtime
+            return copy.deepcopy(data)
         except Exception as e:
             logger.error("Failed to read identity store: %s", e)
             return {}
@@ -49,6 +59,8 @@ class IdentityStore:
         try:
             token = self._fernet.encrypt(json.dumps(data).encode("utf-8"))
             self.data_path.write_bytes(token)
+            self._cache = data
+            self._cache_mtime = self.data_path.stat().st_mtime
         except Exception as e:
             logger.error("Failed to write identity store: %s", e)
 

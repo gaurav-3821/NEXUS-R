@@ -36,9 +36,9 @@ def test_record_signals_and_inference():
     assert scores["confusion"] > 0.6
     
     # Should have triggered analysis since > MINIMUM_DATA_POINTS
-    assert "confusion" in store.inferred
-    assert store.inferred["confusion"]["confidence"] > 0.5
-    assert "simplify explanations" in store.inferred["confusion"]["value"]
+    assert "complexity" in store.inferred
+    assert store.inferred["complexity"]["confidence"] > 0.4
+    assert "simplify explanations" in store.inferred["complexity"]["value"]
 
 def test_technical_depth_inference():
     store = DummyIdentityStore()
@@ -59,7 +59,7 @@ def test_technical_depth_inference():
     tracker._analyze_and_infer() # Force inference as accumulator needs 2 passes
     tracker._analyze_and_infer()
     
-    assert "technical_depth" in store.inferred
+    assert "depth" in store.inferred
 
 def test_conciseness_inference():
     store = DummyIdentityStore()

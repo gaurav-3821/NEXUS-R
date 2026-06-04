@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useModelsStore } from '../../store/modelsStore';
-import { Paperclip, Send, Square, Bot, ChevronDown, Check, Settings } from 'lucide-react';
+import { Paperclip, Send, Square, Bot, ChevronDown, Check, Settings, Star, X, Search } from 'lucide-react';
 import clsx from 'clsx';
 
 import { useNavigate } from 'react-router-dom';
@@ -11,13 +11,39 @@ export default function ChatInput() {
   const [input, setInput] = useState('');
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Auto Router');
+  const [searchFilter, setSearchFilter] = useState('');
   const { sendChatMessage, interruptChat, streamingMsgId, attachedImages } = useAppStore();
-  const { currentConfig, loadModels } = useModelsStore();
+  const { loadModels, openrouterModels, pinnedCloudModels, togglePinnedModel, listOpenRouter, routingProfile } = useModelsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadModels();
   }, [loadModels]);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) setSearchFilter('');
+  }, [modelDropdownOpen]);
+
+  useEffect(() => {
+    if (modelDropdownOpen && openrouterModels.length === 0) {
+      listOpenRouter();
+    }
+  }, [modelDropdownOpen, openrouterModels.length, listOpenRouter]);
+
+  useEffect(() => {
+    if (!modelDropdownOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setModelDropdownOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [modelDropdownOpen]);
+
+  const filteredModels = openrouterModels.filter((m: any) =>
+    !searchFilter
+    || m.id?.toLowerCase().includes(searchFilter.toLowerCase())
+    || m.name?.toLowerCase().includes(searchFilter.toLowerCase())
+  );
 
   const handleSend = () => {
     if (streamingMsgId) {
@@ -35,6 +61,12 @@ export default function ChatInput() {
       handleSend();
     }
   };
+
+  const profileItems = [
+    { key: 'reasoning', label: 'Reasoning', model: routingProfile?.reasoning || 'Auto-Router' },
+    { key: 'coding', label: 'Coding', model: routingProfile?.coding || 'Auto-Router' },
+    { key: 'general', label: 'General', model: routingProfile?.general || 'Auto-Router' },
+  ];
 
   return (
     <div className="flex flex-col mx-auto w-full max-w-4xl px-8 pb-8 relative z-20">
@@ -80,77 +112,163 @@ export default function ChatInput() {
 
           {/* Model Selector Dropdown */}
           {modelDropdownOpen && (
-            <div className="absolute bottom-14 right-14 w-80 bg-white dark:bg-slate-900 border border-gray-100 shadow-xl rounded-2xl p-2 z-50">
+            <div className="absolute bottom-14 right-14 w-96 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-xl rounded-2xl z-50 flex flex-col max-h-[480px]">
               
-              {/* Auto Router Selection */}
-              <button
-                onClick={() => {
-                  setSelectedModel("Auto Router");
-                  setModelDropdownOpen(false);
-                }}
-                className={clsx(
-                  "w-full flex items-start justify-between p-3 rounded-xl transition-colors text-left",
-                  selectedModel === "Auto Router" ? "bg-accent-50" : "hover:bg-gray-50 dark:hover:bg-slate-800"
-                )}
-              >
-                <div className="flex gap-3 w-full">
-                  <div className="mt-0.5"><Bot size={18} className={selectedModel === "Auto Router" ? "text-accent-600" : "text-gray-400"} /></div>
+              <div className="overflow-y-auto p-2">
+                {/* Section 1: Auto-Router Profiles */}
+                <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Auto-Router Profiles
+                </div>
+
+                {/* Auto Router */}
+                <button
+                  onClick={() => { setSelectedModel("Auto Router"); setModelDropdownOpen(false); }}
+                  className={clsx(
+                    "w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                    selectedModel === "Auto Router" ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
+                  )}
+                >
+                  <Bot size={18} className={selectedModel === "Auto Router" ? "text-accent-600" : "text-gray-400"} />
                   <div className="flex-1">
-                    <div className={clsx("text-sm font-semibold", selectedModel === "Auto Router" ? "text-accent-900" : "text-gray-800")}>
+                    <div className={clsx("text-sm font-semibold", selectedModel === "Auto Router" ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
                       Auto Router
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      <div className="mb-1 text-gray-400 uppercase tracking-wider text-[10px] font-bold">Active Models</div>
-                      <div className="flex justify-between"><span>Reasoning &rarr;</span> <span>{useModelsStore.getState().routingProfile?.reasoning || 'GPT-4o'}</span></div>
-                      <div className="flex justify-between"><span>Coding &rarr;</span> <span>{useModelsStore.getState().routingProfile?.coding || 'Claude 3.5 Sonnet'}</span></div>
-                      <div className="flex justify-between"><span>General &rarr;</span> <span>{useModelsStore.getState().routingProfile?.general || 'Llama 3 70B'}</span></div>
-                    </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Automatic model routing by task</div>
                   </div>
-                </div>
-                {selectedModel === "Auto Router" && <Check size={16} className="text-accent-600 ml-2" />}
-              </button>
+                  {selectedModel === "Auto Router" && <Check size={16} className="text-accent-600 shrink-0" />}
+                </button>
 
-              {/* Manual Override */}
-              <div className="px-3 py-2 mt-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">Manual Override</div>
-              <div className="space-y-1">
-                {[
-                  useModelsStore.getState().routingProfile?.reasoning || 'GPT-4o',
-                  useModelsStore.getState().routingProfile?.coding || 'Claude 3.5 Sonnet',
-                  useModelsStore.getState().routingProfile?.general || 'Llama 3 70B'
-                ].map(m => (
+                {/* Profile override items */}
+                {profileItems.map(item => (
                   <button
-                    key={m}
-                    onClick={() => {
-                      setSelectedModel(m);
-                      setModelDropdownOpen(false);
-                    }}
+                    key={item.key}
+                    onClick={() => { setSelectedModel(item.model); setModelDropdownOpen(false); }}
                     className={clsx(
-                      "w-full flex items-center justify-between p-3 rounded-xl transition-colors text-left",
-                      selectedModel === m ? "bg-accent-50" : "hover:bg-gray-50 dark:hover:bg-slate-800"
+                      "w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                      selectedModel === item.model ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                     )}
                   >
-                    <div className="flex gap-3">
-                      <div className="mt-0.5"><Bot size={18} className={selectedModel === m ? "text-accent-600" : "text-gray-400"} /></div>
-                      <div className={clsx("text-sm font-semibold", selectedModel === m ? "text-accent-900" : "text-gray-800")}>{m}</div>
+                    <Bot size={18} className={selectedModel === item.model ? "text-accent-600" : "text-gray-400"} />
+                    <div className="flex-1 min-w-0">
+                      <div className={clsx("text-sm font-semibold truncate", selectedModel === item.model ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
+                        {item.label}
+                      </div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{item.model}</div>
                     </div>
-                    {selectedModel === m && <Check size={16} className="text-accent-600" />}
+                    {selectedModel === item.model && <Check size={16} className="text-accent-600 shrink-0" />}
                   </button>
                 ))}
-              </div>
 
-              {/* Current Routing Profile */}
-              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-800">
-                <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Current Routing Profile</div>
-                <div className="px-3 space-y-1 text-xs text-gray-500">
-                  <div className="flex justify-between"><span>Reasoning:</span> <span className="font-medium text-gray-700 dark:text-gray-300">{useModelsStore.getState().routingProfile?.reasoning || 'GPT-4o'}</span></div>
-                  <div className="flex justify-between"><span>Coding:</span> <span className="font-medium text-gray-700 dark:text-gray-300">{useModelsStore.getState().routingProfile?.coding || 'Claude 3.5 Sonnet'}</span></div>
-                  <div className="flex justify-between"><span>General:</span> <span className="font-medium text-gray-700 dark:text-gray-300">{useModelsStore.getState().routingProfile?.general || 'Llama 3 70B'}</span></div>
-                  <div className="flex justify-between"><span>Embedding:</span> <span className="font-medium text-gray-700 dark:text-gray-300">{useModelsStore.getState().routingProfile?.embedding || 'text-embedding-3-small'}</span></div>
+                {/* Divider */}
+                <div className="my-2 border-t border-gray-100 dark:border-slate-800" />
+
+                {/* Section 2: Pinned Cloud Models */}
+                <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  Pinned Cloud Models
                 </div>
+                {pinnedCloudModels.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500 italic">
+                    Pin models from the list below
+                  </div>
+                ) : (
+                  pinnedCloudModels.map(id => {
+                    const model = openrouterModels.find((m: any) => m.id === id);
+                    const displayName = model?.name || id.split('/').pop() || id;
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => { setSelectedModel(id); setModelDropdownOpen(false); }}
+                        className={clsx(
+                          "w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                          selectedModel === id ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
+                        )}
+                      >
+                        <Bot size={18} className={selectedModel === id ? "text-accent-600" : "text-gray-400"} />
+                        <div className="flex-1 min-w-0">
+                          <div className={clsx("text-sm font-semibold truncate", selectedModel === id ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
+                            {displayName}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{id}</div>
+                        </div>
+                        {selectedModel === id && <Check size={16} className="text-accent-600 shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+
+                {/* Divider */}
+                <div className="my-2 border-t border-gray-100 dark:border-slate-800" />
+
+                {/* Section 3: All OpenRouter Models */}
+                <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                  All OpenRouter Models
+                </div>
+
+                {/* Search filter — only show when models are loaded */}
+                {openrouterModels.length > 0 && (
+                  <div className="relative px-3 mb-2">
+                    <Search size={14} className="absolute left-[19px] top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchFilter}
+                      onChange={(e) => setSearchFilter(e.target.value)}
+                      placeholder="Search models..."
+                      className="w-full pl-8 pr-8 py-1.5 text-xs bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg outline-none focus:ring-1 focus:ring-accent-500 text-gray-800 dark:text-gray-200 placeholder-gray-400"
+                    />
+                    {searchFilter && (
+                      <button onClick={() => setSearchFilter('')} className="absolute right-[19px] top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Model list */}
+                {openrouterModels.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500 italic">
+                    Loading models...
+                  </div>
+                ) : filteredModels.length === 0 && searchFilter ? (
+                  <div className="px-3 py-3 text-xs text-gray-400 dark:text-gray-500 italic">
+                    No models match "{searchFilter}"
+                  </div>
+                ) : (
+                  filteredModels.map((model: any) => {
+                    const isPinned = pinnedCloudModels.includes(model.id);
+                    return (
+                      <div key={model.id} className="flex items-center gap-1 group">
+                        <button
+                          onClick={() => { setSelectedModel(model.id); setModelDropdownOpen(false); }}
+                          className={clsx(
+                            "flex-1 flex items-center gap-3 p-3 rounded-xl transition-colors text-left min-w-0",
+                            selectedModel === model.id ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
+                          )}
+                        >
+                          <Bot size={18} className={clsx("shrink-0", selectedModel === model.id ? "text-accent-600" : "text-gray-400")} />
+                          <div className="flex-1 min-w-0">
+                            <div className={clsx("text-sm font-semibold truncate", selectedModel === model.id ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
+                              {model.name || model.id.split('/').pop()}
+                            </div>
+                            <div className="text-xs text-gray-400 dark:text-gray-500 truncate">{model.id}</div>
+                          </div>
+                          {selectedModel === model.id && <Check size={16} className="text-accent-600 shrink-0" />}
+                        </button>
+                        <button
+                          onClick={() => togglePinnedModel(model.id)}
+                          className="p-2 text-gray-400 hover:text-yellow-500 dark:hover:text-yellow-400 opacity-0 group-hover:opacity-100 transition-all shrink-0"
+                          title={isPinned ? "Unpin model" : "Pin model"}
+                          aria-label={isPinned ? "Unpin model" : "Pin model"}
+                        >
+                          <Star size={14} className={isPinned ? "fill-yellow-400 text-yellow-400 opacity-100" : ""} />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
 
-              {/* Manage Models */}
-              <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800">
+              {/* Sticky Manage Models footer */}
+              <div className="sticky bottom-0 border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 rounded-b-2xl">
                 <button 
                   onClick={() => { setModelDropdownOpen(false); navigate('/settings/models'); }}
                   className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-slate-800 rounded-lg">

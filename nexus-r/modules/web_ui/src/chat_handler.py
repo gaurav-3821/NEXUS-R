@@ -11,6 +11,54 @@ from nexus_r.events import Event, IntentResult, PermissionTier
 logger = logging.getLogger("nexus-r.chat")
 
 
+# --- Psutil cache to avoid per-token syscalls ---
+_psutil_cache: dict[str, object] = {"mem": None, "ts": 0.0}
+
+def _cached_virtual_memory():
+    """Return psutil.virtual_memory(), cached for 10 seconds."""
+    import time as _time
+    now = _time.time()
+    if _psutil_cache["mem"] is None or now - _psutil_cache["ts"] > 10.0:
+        import psutil
+        _psutil_cache["mem"] = psutil.virtual_memory()
+        _psutil_cache["ts"] = now
+    return _psutil_cache["mem"]
+
+
+def _is_trivial_message(msg: str) -> bool:
+    """Check if a message is trivial (greeting, short ack, etc.)."""
+    words = msg.split()
+    if len(words) > 8:
+        return False
+    trivial = {
+        'hi', 'hello', 'hey', 'thanks', 'thank', 'ok', 'okay', 'bye',
+        'yes', 'no', 'sure', 'cool', 'nice', 'great', 'awesome', 'wow',
+        'lol', 'haha', 'good', 'morning', 'night', 'please', 'help',
+    }
+    stripped = msg.lower().strip().rstrip('!?.')
+    return stripped in trivial or (len(words) <= 3 and all(w.lower().rstrip('!?.') in trivial for w in words))
+
+
+def _needs_artifact_prompt(msg: str) -> bool:
+    """Check if the message likely needs artifact/browser system instructions."""
+    lower = msg.lower()
+    keywords = [
+        'chart', 'graph', 'plot', 'diagram', 'visual', 'tabs', 'table',
+        'artifact', 'html', 'interactive', 'demo', 'ui', 'mockup',
+        'browse', 'search the web', 'go to', 'navigate', 'fetch',
+        'visit', 'open http', 'forecast', 'predict', 'timesfm',
+    ]
+    return any(kw in lower for kw in keywords)
+
+# Pre-compiled Regex patterns for Intent Parsing
+import re
+URL_PATTERN = re.compile(r'(?:go to|fetch|read|visit|open|browse)\s+(https?://[^\s]+)', re.IGNORECASE)
+SEARCH_PATTERN = re.compile(r'(?:search the web for|search for|google|web search|look up)\s+(.+)', re.IGNORECASE)
+HORIZON_PATTERN = re.compile(r'(?:next|horizon|predict|steps)\s+(\d+)', re.IGNORECASE)
+SEQ_BRACKET_PATTERN = re.compile(r'(?:forecast|predict|timesfm)[^\[\(]*[\[\(]([\d\s\.,\-]+)[\]\)]', re.IGNORECASE)
+SEQ_NATURAL_PATTERN = re.compile(r'(?:forecast|predict|timesfm)\s+(?:the\s+)?(?:next\s+\d+\s+)?(?:values|points|data|sequence)?\s*(?:for|of|sequence)?\s*([\d\s\.,\-]+)', re.IGNORECASE)
+BROWSER_ACTION_PATTERN = re.compile(r'```browser_action\s*(.*?)\s*```', re.DOTALL)
+
 class ChatHandler:
     def __init__(
         self,
@@ -48,6 +96,21 @@ class ChatHandler:
         self.behavior_tracker = BehaviorTracker(self.identity_store)
         self.calculator = SafeCalculator()
         self.browser = AgenticBrowser()
+        
+        # Initialize Search Registry & Research Engine
+        from modules.cognition_router.src.providers.search.__init__ import SearchProviderRegistry
+        from modules.cognition_router.src.providers.search.searxng_provider import SearxngProvider
+        from modules.cognition_router.src.providers.search.playwright_provider import PlaywrightProvider
+        from modules.cognition_router.src.research_engine import ResearchEngine
+        
+        self.search_registry = SearchProviderRegistry()
+        self.search_registry.register(SearxngProvider(), role="search")
+        playwright_provider = PlaywrightProvider(self.browser)
+        self.search_registry.register(playwright_provider, role="search")
+        self.search_registry.register(playwright_provider, role="extract")
+        
+        self.research_engine = ResearchEngine(self.search_registry)
+        
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._paused_browsers: dict[str, Any] = {}
 
@@ -105,6 +168,41 @@ class ChatHandler:
                 "timestamp": ts,
             }, None, None, msg_id, ts, "calculator", conversation_id
 
+        # 1.5 Check Trivial Bypass
+        if _is_trivial_message(message):
+            import random
+            stripped = message.lower().strip().rstrip('!?.')
+            if stripped in ('hi', 'hello', 'hey', 'morning', 'night'):
+                resp = random.choice(["Hello! How can I help you?", "Hi there!", "Greetings!"])
+            elif stripped in ('thanks', 'thank', 'thank you'):
+                resp = random.choice(["You're welcome!", "Anytime!", "Glad I could help."])
+            elif stripped in ('bye', 'goodbye'):
+                resp = random.choice(["Goodbye!", "Have a great day!", "See you later!"])
+            elif stripped in ('ok', 'okay', 'sure', 'yes', 'no', 'cool', 'nice', 'great', 'awesome', 'wow'):
+                resp = "Got it."
+            else:
+                resp = "Acknowledged."
+                
+            msg_id = str(uuid4())
+            ts = datetime.now(timezone.utc).isoformat()
+            await self._log_response({
+                "content": resp,
+                "model": "system_trivial_bypass",
+                "cost": 0.0,
+                "latency_ms": 1.0,
+                "blocked": False,
+            }, conversation_id, msg_id, ts)
+            return {
+                "message_id": msg_id,
+                "conversation_id": conversation_id,
+                "content": resp,
+                "role": "assistant",
+                "model": "system_trivial",
+                "cost": 0.0,
+                "latency_ms": 1.0,
+                "timestamp": ts,
+            }, None, None, msg_id, ts, "system_trivial", conversation_id
+
         # 2. Check Memory Commands
         memory_intent = self.memory_parser.parse(message)
         if memory_intent:
@@ -141,15 +239,24 @@ class ChatHandler:
             }, None, None, msg_id, ts, "memory_parser", conversation_id
 
         # 2.5 Check Browser Intents
-        import re
-        url_match = re.search(r'(?:go to|fetch|read|visit|open|browse)\s+(https?://[^\s]+)', message, re.IGNORECASE)
-        search_match = re.search(r'(?:search the web for|search for|google|web search|look up)\s+(.+)', message, re.IGNORECASE)
+        url_match = URL_PATTERN.search(message)
+        search_match = SEARCH_PATTERN.search(message)
         
         action_desc = ""
         extracted_text = ""
         
         if url_match:
             url = url_match.group(1)
+            if self.ws_handler:
+                await self.ws_handler.broadcast({
+                    "type": "chat_message_sent",
+                    "message_id": "sys_" + str(uuid4()),
+                    "conversation_id": conversation_id,
+                    "content": f"Navigating to {url}...",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "status": "processing",
+                    "streaming": True,
+                })
             res = await self.browser.goto(url)
             if res.get("success"):
                 extracted_text = await self.browser.extract_text()
@@ -165,6 +272,16 @@ class ChatHandler:
                 query = query[:-1].strip()
             elif query.startswith('"') or query.startswith("'"):
                 query = query[1:].strip()
+            if self.ws_handler:
+                await self.ws_handler.broadcast({
+                    "type": "chat_message_sent",
+                    "message_id": "sys_" + str(uuid4()),
+                    "conversation_id": conversation_id,
+                    "content": f"Searching the web for '{query}'...",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "status": "processing",
+                    "streaming": True,
+                })
                 
             search_res = await self.browser.search_web(query)
             image_res = await self.browser.search_images(query) if hasattr(self.browser, "search_images") else {}
@@ -198,13 +315,13 @@ class ChatHandler:
         if not action_desc and is_forecast_query:
             try:
                 horizon = 5
-                horizon_match = re.search(r'(?:next|horizon|predict|steps)\s+(\d+)', message, re.IGNORECASE)
+                horizon_match = HORIZON_PATTERN.search(message)
                 if horizon_match:
                     horizon = int(horizon_match.group(1))
                 
-                seq_match = re.search(r'(?:forecast|predict|timesfm)[^\[\(]*[\[\(]([\d\s\.,\-]+)[\]\)]', message, re.IGNORECASE)
+                seq_match = SEQ_BRACKET_PATTERN.search(message)
                 if not seq_match:
-                    seq_match = re.search(r'(?:forecast|predict|timesfm)\s+(?:the\s+)?(?:next\s+\d+\s+)?(?:values|points|data|sequence)?\s*(?:for|of|sequence)?\s*([\d\s\.,\-]+)', message, re.IGNORECASE)
+                    seq_match = SEQ_NATURAL_PATTERN.search(message)
                 
                 if seq_match:
                     numbers_str = seq_match.group(1)
@@ -256,7 +373,8 @@ class ChatHandler:
         msg_id = str(uuid4())
         ts = datetime.now(timezone.utc).isoformat()
 
-        await self.event_store.append(Event(
+        # Fire-and-forget: don't block the response pipeline on event logging
+        asyncio.create_task(self.event_store.append(Event(
             event_type="chat_message_sent",
             data={
                 "message_id": msg_id,
@@ -265,7 +383,7 @@ class ChatHandler:
                 "model": model or "",
                 "timestamp": ts,
             },
-        ))
+        )))
         if self.ws_handler:
             await self.ws_handler.broadcast({
                 "type": "chat_message_sent",
@@ -308,16 +426,23 @@ class ChatHandler:
                 return result, None, None, msg_id, ts, "", conversation_id
 
         # 3. Preference Engine Injection
-        prefs = self.preference_engine.get_system_prompt_additions()
-        
         # 3.5 Semantic Episodic Memory Injection
-        context_block = await self.memory_engine.get_context_injection(message, conversation_id=conversation_id)
-        
         # 4. Pattern Store Injection
-        pattern = self.pattern_store.match(message)
-        pattern_prompt = ""
-        if pattern:
-            pattern_prompt = self.pattern_store.get_prompt_injection(pattern)
+        # Parallelize I/O reads
+        def _get_pattern_sync():
+            p = self.pattern_store.match(message)
+            return self.pattern_store.get_prompt_injection(p) if p else ""
+            
+        async def _get_mem_async():
+            if not _is_trivial_message(message):
+                return await self.memory_engine.get_context_injection(message, conversation_id=conversation_id)
+            return ""
+
+        prefs, context_block, pattern_prompt = await asyncio.gather(
+            asyncio.to_thread(self.preference_engine.get_system_prompt_additions),
+            _get_mem_async(),
+            asyncio.to_thread(_get_pattern_sync)
+        )
             
         artifact_instruction = """
 [SYSTEM INSTRUCTION]
@@ -393,7 +518,9 @@ When you output a `browser_action`, the system will execute it on the page, chec
         final_prompt = message
         if prefs or pattern_prompt or context_block:
             final_prompt = f"{message}\n\n{prefs}\n{pattern_prompt}\n{context_block}"
-        final_prompt += f"\n\n{artifact_instruction}\n\n{browser_agent_instruction}"
+        # Only inject heavy system instructions when the message likely needs them
+        if _needs_artifact_prompt(message):
+            final_prompt += f"\n\n{artifact_instruction}\n\n{browser_agent_instruction}"
 
         intent = IntentResult(
             raw_input=message,
@@ -419,7 +546,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
             vision_fallback = "qwen2.5-vl:7b"
             
             try:
-                await self._ensure_ollama_model(vision_fallback)
+                await self._ensure_ollama_model(vision_fallback, msg_id, conversation_id)
             except RuntimeError as e:
                 err_msg = str(e)
                 msg_id = str(uuid4())
@@ -484,12 +611,24 @@ When you output a `browser_action`, the system will execute it on the page, chec
         conversation_id: str | None = None,
         telemetry: dict[str, Any] | None = None,
         images: list[str] | None = None,
+        mode: str = "balanced",
+        search_enabled: bool = False,
+        search_sources: list[str] | None = None,
     ) -> dict[str, Any]:
         early_res, intent, routing, msg_id, ts, preferred, conversation_id = await self._prepare_intent(
             message=message, model=model, conversation_id=conversation_id, telemetry=telemetry, images=images
         )
         if early_res is not None:
             return early_res
+
+        final_prompt = intent.normalized_input
+        if search_enabled and mode != "speed":
+            research = await self.research_engine.run(intent, mode, search_sources or ["web"])
+            
+            if research.context_for_prompt:
+                final_prompt = f"[Research Context]\n{research.context_for_prompt}\n\n{intent.normalized_input}"
+
+        intent.normalized_input = final_prompt
             
         started = datetime.now(timezone.utc)
         if self.ws_handler:
@@ -535,6 +674,9 @@ When you output a `browser_action`, the system will execute it on the page, chec
         conversation_id: str | None = None,
         telemetry: dict[str, Any] | None = None,
         images: list[str] | None = None,
+        mode: str = "balanced",
+        search_enabled: bool = False,
+        search_sources: list[str] | None = None,
     ):
         import json
         
@@ -545,33 +687,46 @@ When you output a `browser_action`, the system will execute it on the page, chec
         async def mock_cb(val: str):
             await queue.put(val)
 
-        # We cannot easily yield from the callback, so we'll just let prepare_intent run
-        # and if we needed to yield vision statuses, we'll collect them in a queue, but _prepare_intent is blocking.
-        # So we skip real-time vision callback for now in stream_message or handle it differently.
-        # For simplicity, we just pass None to stream_callback right now.
-        
         early_res, intent, routing, msg_id, ts, preferred, conversation_id = await self._prepare_intent(
             message=message, model=model, conversation_id=conversation_id, telemetry=telemetry, images=images
         )
 
         if early_res is not None:
-            # Yield early response as a stream
             yield f"data: {json.dumps({'type': 'status', 'value': 'routing'})}\n\n"
             yield f"data: {json.dumps({'type': 'token', 'value': early_res.get('content', '')})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred})}\n\n"
             return
+
+        final_prompt = intent.normalized_input
+
+        if search_enabled and mode != "speed":
+            research = await self.research_engine.run(intent, mode, search_sources or ["web"])
+
+            if research.sources:
+                sources_payload = [{'title': s[0], 'url': s[1], 'content': s[2]} for s in research.sources]
+                yield f"data: {json.dumps({'type': 'sources', 'data': sources_payload}, default=str)}\n\n"
+
+            if research.context_for_prompt:
+                # Ensure the user's raw input stays at the bottom to prevent context dilution
+                final_prompt = f"[Research Context]\n{research.context_for_prompt}\n\n{intent.normalized_input}"
+
+        intent.normalized_input = final_prompt
 
         yield f"data: {json.dumps({'type': 'status', 'value': 'routing'})}\n\n"
         yield f"data: {json.dumps({'type': 'status', 'value': 'thinking'})}\n\n"
         
         started = datetime.now(timezone.utc)
         full_text = ""
+        reasoning_tokens: int | None = None
         try:
             async for chunk in self.router.stream(intent, preferred):
                 text = chunk.get("text", "")
                 if text:
                     full_text += text
                     yield f"data: {json.dumps({'type': 'token', 'value': text})}\n\n"
+                rt = chunk.get("reasoning_tokens")
+                if rt is not None:
+                    reasoning_tokens = rt
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'value': str(e)})}\n\n"
             return
@@ -584,8 +739,10 @@ When you output a `browser_action`, the system will execute it on the page, chec
             "provider": provider,
             "route": route_name,
             "latency_ms": latency,
-            "cost": routing.cost_estimate
+            "cost": routing.cost_estimate,
         }
+        if reasoning_tokens is not None:
+            metadata["reasoning_tokens"] = reasoning_tokens
         
         yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred, 'metadata': metadata})}\n\n"
         
@@ -606,7 +763,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
         if telemetry:
             for k, v in telemetry.items():
                 self.behavior_tracker.record_signal(k, v)
-    async def _ensure_ollama_model(self, model_name: str) -> None:
+    async def _ensure_ollama_model(self, model_name: str, msg_id: str = "", conversation_id: str = "") -> None:
         import httpx
         try:
             async with httpx.AsyncClient() as client:
@@ -623,8 +780,25 @@ When you output a `browser_action`, the system will execute it on the page, chec
                     if any(model_name in t or t in model_name for t in tags):
                         return # Exists
                         
-                # 3. Fail fast
-                raise RuntimeError(f"Vision fallback model '{model_name}' is not installed. Please download it via the Download Center before attaching images.")
+                # 3. Auto-pull
+                if self.ws_handler and msg_id and conversation_id:
+                    await self.ws_handler.broadcast({
+                        "type": "chat_status",
+                        "message_id": msg_id,
+                        "conversation_id": conversation_id,
+                        "state": "downloading",
+                        "stage": f"Pulling vision model {model_name}...",
+                        "reasoning_chunk": f"\n\n[SYSTEM] Downloading required vision model {model_name} from Ollama. This may take a few minutes...\n"
+                    })
+                
+                process = await asyncio.create_subprocess_exec(
+                    "ollama", "pull", model_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await process.communicate()
+                if process.returncode != 0:
+                    raise RuntimeError(f"Failed to auto-pull vision model '{model_name}': {stderr.decode()}")
         except Exception as e:
             logger.error(f"Failed to ensure ollama model {model_name}: {e}")
             raise e
@@ -736,7 +910,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 has_browser_action = False
                 chunks.clear()
                 
-                mem = psutil.virtual_memory()
+                mem = _cached_virtual_memory()
                 mem_usage = f"{mem.used / (1024**3):.1f} GB / {mem.total / (1024**3):.1f} GB"
 
                 # 1. Start generation state
@@ -820,7 +994,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                         })
                         
                         if token_count % 5 == 0:  # throttling metrics to avoid flooding ws
-                            mem = psutil.virtual_memory()
+                            mem = _cached_virtual_memory()
                             mem_usage = f"{mem.used / (1024**3):.1f} GB / {mem.total / (1024**3):.1f} GB"
                             
                             metrics_payload = {
@@ -846,7 +1020,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 full_assistant_response.append(full_text)
                 
                 # Check for browser action blocks
-                action_match = re.search(r'```browser_action\s*(.*?)\s*```', full_text, re.DOTALL)
+                action_match = BROWSER_ACTION_PATTERN.search(full_text)
                 if action_match:
                     action_json_str = action_match.group(1).strip()
                     try:

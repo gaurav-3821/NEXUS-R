@@ -12,6 +12,7 @@ from modules.state_core.src.event_store import EventStore
 @pytest.mark.asyncio
 async def test_sandbox_write_read_and_search(workspace) -> None:
     config = NEXUSConfig.default(workspace)
+    config.database.path.parent.mkdir(parents=True, exist_ok=True)
     store = EventStore(config.database.path)
     sandbox = ExecutionSandbox(config, store)
     write_task = TaskDefinition(
@@ -43,6 +44,7 @@ async def test_sandbox_write_read_and_search(workspace) -> None:
 @pytest.mark.asyncio
 async def test_sandbox_blocks_traversal_and_shell_chaining(workspace) -> None:
     config = NEXUSConfig.default(workspace)
+    config.database.path.parent.mkdir(parents=True, exist_ok=True)
     store = EventStore(config.database.path)
     sandbox = ExecutionSandbox(config, store)
     with pytest.raises(SandboxExecutionError):

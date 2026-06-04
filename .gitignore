@@ -6,12 +6,15 @@ __pycache__/
 .venv/
 dist/
 build/
+node_modules/
 *.db
 *.sqlite
 *.sqlite3
 .mypy_cache/
 .ruff_cache/
 .nexus-r/
+.vite/
+nexus-r/frontend/.vite/
 .vendor/
 .benchmark-workspace/
 .failure-workspace/
@@ -19,6 +22,8 @@ build/
 test.txt
 .test-tmp/
 execution plan with prompts.pdf
+htmlcov/
+*.log
 
 # Secrets and build artifacts
 .nexus_token

@@ -15,11 +15,12 @@ export interface LocalModel {
 export interface CloudProviderOption {
   value: string;
   label: string;
-  model: string;
   secret_name: string;
   env_var: string;
   cost_per_1k: string;
   key_prefix: string;
+  base_url?: string;
+  api_key_configured?: boolean;
 }
 
 export interface ModelsStatus {
@@ -91,8 +92,28 @@ export async function checkOllamaStatus(modelName: string): Promise<{ installed:
   return apiFetch(`/models/ollama-status/${encodeURIComponent(modelName)}`);
 }
 
-export async function startDownload(modelName: string): Promise<{ success: boolean; job_id?: string; model?: string; error?: string }> {
-  return apiPost('/models/download', { model_name: modelName });
+export async function configureModels(params: { local_model?: string; cloud_provider?: string; api_key?: string; routingProfile?: RoutingProfile }): Promise<{ status: string; changed: boolean; current: ModelsStatus["current"]; errors: string[]; warnings: string[] }> {
+  return apiPost('/models/config', params);
+}
+
+export async function searchHuggingFace(query: string, filter_tag: string = ''): Promise<{ results: any[] }> {
+  return apiFetch('/models/hf/search', { query, filter_tag, limit: 20 } as any);
+}
+
+export async function listOpenRouterModels(): Promise<{ results: any[] }> {
+  return apiFetch('/models/openrouter/list');
+}
+
+export async function pauseDownload(jobId: string): Promise<{ success: boolean }> {
+  return apiPost(`/models/download-pause/${jobId}`);
+}
+
+export async function resumeDownload(jobId: string): Promise<{ success: boolean }> {
+  return apiPost(`/models/download-resume/${jobId}`);
+}
+
+export async function startDownload(modelName: string, url?: string): Promise<{ success: boolean; job_id?: string; model?: string; error?: string }> {
+  return apiPost('/models/download', { model_name: modelName, url });
 }
 
 export async function cancelDownload(jobId: string): Promise<{ success: boolean; error?: string }> {
@@ -103,6 +124,6 @@ export async function testModel(params: { local_model?: string; cloud_provider?:
   return apiPost('/models/test', params);
 }
 
-export async function configureModels(params: { local_model?: string; cloud_provider?: string; api_key?: string; routingProfile?: RoutingProfile }): Promise<{ status: string; changed: boolean; current: ModelsStatus["current"]; errors: string[]; warnings: string[] }> {
-  return apiPost('/models/config', params);
+export async function deleteLocalModel(modelName: string): Promise<{ success: boolean; error?: string }> {
+  return apiPost('/models/delete', { model_name: modelName });
 }

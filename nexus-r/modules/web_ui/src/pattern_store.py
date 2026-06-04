@@ -20,7 +20,19 @@ class PatternStore:
 
     def _save(self):
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
-        self.store_path.write_text(json.dumps(self.patterns, indent=2))
+        data = json.dumps(self.patterns, indent=2)
+        
+        # Try to fire-and-forget the write if an event loop is running
+        try:
+            import asyncio
+            loop = asyncio.get_running_loop()
+            
+            def _write():
+                self.store_path.write_text(data)
+                
+            loop.run_in_executor(None, _write)
+        except RuntimeError:
+            self.store_path.write_text(data)
 
     def extract_and_save(self, query: str, response: str) -> None:
         """Extract pattern from successful cloud response and save as template."""

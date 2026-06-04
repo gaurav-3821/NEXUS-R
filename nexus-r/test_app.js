@@ -1914,7 +1914,7 @@ function populateLocalDropdown(statusData, localModels) {
 
   const knownOllama = [
     "qwen2.5:1.5b-instruct", "qwen2.5:7b", "qwen2.5:14b", "qwen2.5:32b", "qwen2.5:72b",
-    "llama3.2:3b", "llama3.2:1b", "llama3:70b", "llama3:8b",
+    "llama3.2:3b", "llama3.2:1b", "llama3:8b",
     "gemma2:2b", "gemma2:9b", "gemma2:27b",
     "mistral:7b", "mistral-nemo:12b", "mixtral:8x7b",
     "codellama:7b", "codellama:34b", "codellama:70b",
@@ -2130,7 +2130,7 @@ function populateCostTable(data) {
 const MODEL_SIZES_JS = {
   "qwen2.5:0.5b": 0.5, "qwen2.5:1.5b-instruct": 0.9, "qwen2.5:3b": 1.8,
   "qwen2.5:7b": 4.5, "qwen2.5:14b": 9.0, "qwen2.5:32b": 19, "qwen2.5:72b": 45,
-  "llama3.2:1b": 0.7, "llama3.2:3b": 2.0, "llama3:8b": 4.5, "llama3:70b": 40,
+  "llama3.2:1b": 0.7, "llama3.2:3b": 2.0, "llama3:8b": 4.5,
   "gemma2:2b": 1.5, "gemma2:9b": 5.5, "gemma2:27b": 17,
   "mistral:7b": 4.2, "mistral-nemo:12b": 7.5, "mixtral:8x7b": 26,
   "codellama:7b": 3.8, "codellama:34b": 18, "codellama:70b": 38,

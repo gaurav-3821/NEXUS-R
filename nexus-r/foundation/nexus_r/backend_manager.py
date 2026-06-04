@@ -63,7 +63,11 @@ class BackendManager:
         raise RuntimeError("No available ports found for Ollama backend.")
 
     def _is_ollama_responding(self, port: int) -> bool:
-        return True
+        try:
+            resp = httpx.get(f"http://127.0.0.1:{port}/", timeout=1.0)
+            return "Ollama is running" in resp.text
+        except Exception:
+            return False
 
     def start(self, wait_ready: bool = True):
         with self._lock:

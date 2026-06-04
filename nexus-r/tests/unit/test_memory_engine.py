@@ -46,9 +46,10 @@ async def test_extract_and_recall_memory(memory_engine):
         mock_embed.return_value = [0.1] * 768
         
         # This should trigger memory extraction due to "i prefer"
+        # Make assistant message long enough and include tech terms to pass importance threshold
         ids = await memory_engine.extract_memories(
-            "i prefer to use functional programming when possible",
-            "Functional programming has many benefits...",
+            "i prefer to use functional programming when possible because I like to compose functions and api calls without side effects",
+            "Functional programming has many benefits. It allows you to build reliable software pipelines and clear api structures. " * 10,
             conversation_id="conv_1"
         )
         
@@ -67,10 +68,18 @@ async def test_memory_deduplication(memory_engine):
     with patch.object(memory_engine, '_embed', new_callable=AsyncMock) as mock_embed:
         mock_embed.return_value = [0.1] * 768
         
-        await memory_engine.extract_memories("my project is in rust", "cool", "conv_1")
+        await memory_engine.extract_memories(
+            "my project is an api in rust using database connections",
+            "That sounds like a great project. Writing an API in rust with database is fast and safe. " * 10,
+            "conv_1"
+        )
         
         # Same conceptual memory, mock gives same embedding -> should dedup
-        ids = await memory_engine.extract_memories("my project is built using rust", "awesome", "conv_2")
+        ids = await memory_engine.extract_memories(
+            "my project is an api built using rust and database",
+            "Awesome, rust is great for an API and database backend. " * 10,
+            "conv_2"
+        )
         assert len(ids) == 0
         
         # Check reinforcement count

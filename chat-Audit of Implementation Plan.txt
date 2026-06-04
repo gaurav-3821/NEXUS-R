@@ -1,0 +1,406 @@
+Here is the complete, final, and fully audited implementation plan.
+
+***
+
+# NEXUS-R Features: Final Implementation Plan (V3)
+
+## Overview
+Four phases, each building on pluggable interfaces. The core principle: `SearchProvider`, `WidgetProvider`, and `SuggestionProvider` are abstract base classes — register a new one with a single line, no other code changes.
+
+---
+
+## Phase 1 — P1 (SearxNG + Research Mode + Citations)
+
+### 1.1 SearchProvider Interface
+**File:** `nexus-r/modules/cognition_router/src/providers/search_provider.py`
+```python
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+
+@dataclass
+class SearchResult:
+    title: str
+    url: str
+    content: str
+    score: float
+    engine: str = ""
+
+@dataclass
+class SearchResponse:
+    results: list[SearchResult] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
+    total: int = 0
+
+class SearchProvider(ABC):
+    @abstractmethod
+    async def search(self, query: str, categories: list[str] | None = None,
+                     site: str | None = None, limit: int = 10) -> SearchResponse:
+        ...
+
+    @abstractmethod
+    async def health(self) -> bool:
+        ...
+```
+
+### 1.2 SearxngProvider
+**File:** `nexus-r/modules/cognition_router/src/providers/search/searxng_provider.py`
+```python
+import os, httpx, logging
+from ..search_provider import SearchProvider, SearchResult, SearchResponse
+
+logger = logging.getLogger("nexus-r.searxng_provider")
+
+class SearxngProvider(SearchProvider):
+    def __init__(self, base_url: str | None = None):
+        self.base_url = base_url or os.environ.get("SEARXNG_API_URL", "http://127.0.0.1:8080")
+
+    async def search(self, query, categories=None, site=None, limit=10) -> SearchResponse:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                params = {"format": "json", "q": query, "limit": limit}
+                if categories:
+                    params["categories"] = ",".join(categories)
+                resp = await client.get(f"{self.base_url}/search", params=params)
+                resp.raise_for_status()
+                data = resp.json()
+                results = [
+                    SearchResult(
+                        title=r.get("title", ""),
+                        url=r.get("url", ""),
+                        content=str(r.get("content") or ""),
+                        score=1.0 - (i * 0.01),
+                        engine="searxng",
+                    )
+                    for i, r in enumerate(data.get("results", []))
+                ]
+                return SearchResponse(
+                    results=results[:limit],
+                    suggestions=data.get("suggestions", []),
+                    total=len(results),
+                )
+        except Exception as e:
+            logger.warning(f"SearxNG search failed: {e}")
+            return SearchResponse(results=[], suggestions=[], total=0)
+
+    async def health(self) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                resp = await client.get(f"{self.base_url}/search", params={"format": "json", "q": "ping"})
+                return resp.status_code == 200
+        except Exception:
+            return False
+```
+
+### 1.3 PlaywrightProvider
+**File:** `nexus-r/modules/cognition_router/src/providers/search/playwright_provider.py`
+```python
+from ..search_provider import SearchProvider, SearchResult, SearchResponse
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from modules.execution_sandbox.src.browser_sandbox import AgenticBrowser
+
+class PlaywrightProvider(SearchProvider):
+    def __init__(self, browser: 'AgenticBrowser'):
+        self.browser = browser
+
+    async def search(self, query, categories=None, site=None, limit=10) -> SearchResponse:
+        full_query = f"{query} site:{site}" if site else query
+        raw = await self.browser.search_web(full_query)
+        results = raw.get("results", [])
+        return SearchResponse(
+            results=[
+                SearchResult(
+                    title=r.get("title", ""),
+                    url=r.get("url", ""),
+                    content=str(r.get("snippet") or r.get("content") or ""),
+                    score=1.0 - (i * 0.01),
+                    engine="playwright",
+                )
+                for i, r in enumerate(results[:limit])
+            ],
+            total=len(results),
+        )
+
+    async def extract(self, url: str) -> str:
+        """Fetch full page content from a URL. Used by ResearchEngine for deep extraction."""
+        nav = await self.browser.goto(url)
+        if nav.get("success"):
+            return await self.browser.extract_text(max_chars=4000)
+        return ""
+
+    async def health(self) -> bool:
+        return True
+```
+
+### 1.4 SearchProviderRegistry
+**File:** `nexus-r/modules/cognition_router/src/providers/search/__init__.py`
+```python
+import time
+from ..search_provider import SearchResponse
+
+class SearchProviderRegistry:
+    def __init__(self):
+        self._search_providers: list = []
+        self._extract_providers: list = []
+        self._health_cache: dict[int, tuple[bool, float]] = {}
+        self._health_ttl: float = 30.0
+
+    def register(self, provider, role: str = "search"):
+        if role == "search":
+            self._search_providers.append(provider)
+        elif role == "extract":
+            self._extract_providers.append(provider)
+
+    async def _is_healthy(self, provider) -> bool:
+        pid = id(provider)
+        now = time.time()
+        if pid in self._health_cache and (now - self._health_cache[pid][1]) < self._health_ttl:
+            return self._health_cache[pid][0]
+        ok = await provider.health()
+        self._health_cache[pid] = (ok, now)
+        return ok
+
+    async def search(self, query, **kwargs) -> SearchResponse:
+        for p in self._search_providers:
+            if await self._is_healthy(p):
+                return await p.search(query, **kwargs)
+        return SearchResponse(results=[], suggestions=[], total=0)
+
+    async def extract(self, url: str) -> str:
+        for p in self._extract_providers:
+            if await self._is_healthy(p):
+                return await p.extract(url)
+        return ""
+```
+
+### 1.5 ResearchEngine & PipelineContext
+**File:** `nexus-r/modules/cognition_router/src/research_engine.py`
+```python
+from __future__ import annotations
+from dataclasses import dataclass, field
+import logging
+from .providers.search_provider import SearchResponse
+
+logger = logging.getLogger("nexus-r.research")
+
+@dataclass
+class PipelineContext:
+    """Context object passed to widgets and downstream processes."""
+    research_result: 'ResearchResult | None' = None
+    memory_facts: list[dict] = field(default_factory=list)
+    router_decision: dict = field(default_factory=dict)
+
+@dataclass
+class ResearchResult:
+    sources: list[tuple[str, str, str]]  # (title, url, snippet)
+    context: str
+    context_for_prompt: str = ""
+    widgets: list[dict] = field(default_factory=list)
+
+class ResearchEngine:
+    def __init__(self, search_registry, widget_registry=None):
+        self.search_registry = search_registry
+        self.widget_registry = widget_registry
+
+    async def run(self, intent, mode: str, sources: list[str] | None = None) -> ResearchResult:
+        if mode == "speed" or not sources:
+            return ResearchResult(sources=[], context="", context_for_prompt="")
+
+        results = await self.search_registry.search(
+            query=intent.raw_input,
+            categories=sources or ["web"],
+            limit=3 if mode == "balanced" else 10,
+        )
+
+        if not results.results:
+            return ResearchResult(sources=[], context="", context_for_prompt="")
+
+        src_list = [(r.title, r.url, r.content[:200]) for r in results.results[:5]]
+
+        context_parts = []
+        for r in results.results[:2]:
+            content = r.content
+            if mode == "quality" and len(content) < 500:
+                extracted = await self.search_registry.extract(r.url)
+                if extracted:
+                    content = extracted
+            context_parts.append(f"--- Source: {r.title} ({r.url}) ---\n{content}")
+
+        context_str = "\n\n".join(context_parts)
+
+        return ResearchResult(
+            sources=src_list,
+            context=context_str,
+            context_for_prompt=context_str,
+        )
+```
+
+### 1.6 ChatRequest Changes
+**File:** `nexus-r/modules/web_ui/src/app.py`
+```python
+class ChatRequest(BaseModel):
+    message: str = Field(..., max_length=10000)
+    model: str | None = None
+    conversation_id: str | None = None
+    images: list[str] | None = None
+    mode: str = "balanced"
+    search_enabled: bool = False
+    search_sources: list[str] = Field(default_factory=lambda: ["web"])
+```
+
+### 1.7 stream_message() Integration
+**File:** `nexus-r/modules/web_ui/src/chat_handler.py`
+```python
+async def stream_message(self, message: str, model: str | None = None, ... mode: str = "balanced", search_enabled: bool = False, search_sources: list[str] | None = None):
+    import json
+    
+    # Non-destructive prompt building
+    final_prompt = intent.normalized_input
+
+    if search_enabled and mode != "speed" and early_res is None:
+        research = await self.research_engine.run(intent, mode, search_sources or ["web"])
+
+        if research.sources:
+            sources_payload = [{'title': s[0], 'url': s[1], 'content': s[2]} for s in research.sources]
+            yield f"data: {json.dumps({'type': 'sources', 'data': sources_payload}, default=str)}\n\n"
+
+        if research.context_for_prompt:
+            final_prompt = f"{intent.normalized_input}\n\n[Research Context]\n{research.context_for_prompt}"
+
+    # ... pass final_prompt to router.stream() ...
+```
+
+### 1.8 - 1.9 Chat Stream & Instantiation
+*(Standard FastAPI StreamingResponse mapping and `ChatHandler.__init__` registering `SearxngProvider` for "search" and `PlaywrightProvider` for both "search" and "extract" roles).*
+
+### 1.10 - 1.11 Frontend API & Store
+- `ChatRequestParams` updated with `mode`, `search_enabled`, `search_sources`.
+- `useAppStore.ts` updates `currentSources` in the same `set()` call as the individual message sources.
+- Optimization mode uses explicit casting: `optimizationMode: 'balanced' as 'speed' | 'balanced' | 'quality'`.
+
+### 1.12 - 1.13 Frontend UI Components
+- `ChatToolbar.tsx`: Placed *inside* the input container wrapper, rendering mode pills and search toggles.
+- `CitationList.tsx`: Renders below the assistant message markdown, mapping over `msg.sources`.
+
+---
+
+## Phase 2 — P2 (Smart Suggestions)
+
+### 2.1 - 2.2 SuggestionProvider & History
+- `HistorySuggestionProvider` correctly assigns `self.max_history = max_history` in `__init__`.
+- Maintains a rolling list of queries and filters by prefix.
+
+### 2.3 - 2.4 Backend Endpoint & Frontend
+- New `/api/v1/chat/suggestions` endpoint requires auth.
+- `SearchSuggestions.tsx` fetches with `token=${encodeURIComponent(token)}` to pass authentication.
+
+---
+
+## Phase 3 — P3 (Widgets)
+
+### 3.1 WidgetProvider Interface
+**File:** `nexus-r/modules/cognition_router/src/providers/widget_provider.py`
+```python
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from foundation.nexus_r.events import IntentResult
+from ..research_engine import PipelineContext
+
+@dataclass
+class WidgetOutput:
+    widget_type: str
+    priority: int
+    llm_context: str
+    ui_data: dict = field(default_factory=dict)
+
+class WidgetProvider(ABC):
+    @abstractmethod
+    def should_run(self, intent: IntentResult) -> bool: ...
+
+    @abstractmethod
+    async def execute(self, intent: IntentResult, context: PipelineContext | None = None) -> WidgetOutput | None: ...
+```
+
+### 3.2 WidgetRegistry
+*(Standard registry using `asyncio.gather` and passing `context` to `execute()`).*
+
+### 3.3 WeatherWidget
+**File:** `nexus-r/modules/cognition_router/src/providers/widgets/weather_widget.py`
+```python
+import re, httpx
+from ..widget_provider import WidgetProvider, WidgetOutput
+
+class WeatherWidget(WidgetProvider):
+    def should_run(self, intent: IntentResult) -> bool:
+        keywords = ["weather", "temperature", "forecast", "rain", "sunny", "climate"]
+        return any(k in intent.raw_input.lower() for k in keywords)
+
+    async def execute(self, intent: IntentResult, context=None) -> WidgetOutput | None:
+        try:
+            # Case-insensitive regex with .title() normalization
+            match = re.search(r'(?:weather|forecast)\s+(?:in|for|at)\s+([a-z\s]+)', intent.raw_input, re.IGNORECASE)
+            city = match.group(1).strip().title() if match else "London"
+
+            # ... Geo lookup and Open-Meteo API call ...
+            # Returns WidgetOutput with temp and city
+```
+
+### 3.4 CalculatorWidget
+*(Uses existing `SafeCalculator` to evaluate math expressions found in `intent.raw_input`).*
+
+### 3.5 CitationWidget
+**File:** `nexus-r/modules/cognition_router/src/providers/widgets/citation_widget.py`
+```python
+from ..widget_provider import WidgetProvider, WidgetOutput
+from ...research_engine import PipelineContext
+
+class CitationWidget(WidgetProvider):
+    def should_run(self, intent: IntentResult) -> bool:
+        return True
+
+    async def execute(self, intent: IntentResult, context: PipelineContext | None = None) -> WidgetOutput | None:
+        # Correctly accesses ResearchResult and unpacks tuples
+        if not context or not context.research_result or not context.research_result.sources:
+            return None
+            
+        sources = context.research_result.sources[:5]
+        return WidgetOutput(
+            widget_type="citation",
+            priority=70,
+            llm_context="\n".join(f"[{i+1}] {s[0]}: {s[1]}" for i, s in enumerate(sources)),
+            ui_data={"sources": [{"title": s[0], "url": s[1], "content": s[2]} for s in sources]},
+        )
+```
+
+### 3.6 - 3.7 Widget Registration & Stream Execution
+**File:** `nexus-r/modules/web_ui/src/chat_handler.py`
+```python
+# In stream_message(), after research runs:
+pipeline_ctx = PipelineContext(research_result=research)
+
+widget_results = await self.widget_registry.run_all(intent, pipeline_ctx)
+for w in widget_results:
+    widget_payload = {'widget_type': w.widget_type, 'ui_data': w.ui_data, 'priority': w.priority}
+    yield f"data: {json.dumps({'type': 'widget', 'data': widget_payload}, default=str)}\n\n"
+    
+    if w.llm_context:
+        final_prompt += f"\n\n[{w.widget_type.upper()}]\n{w.llm_context}"
+```
+
+### 3.8 Frontend: Widget Dispatcher
+*(Standard React component mapping `widget_type` to `WeatherCard`, `CalculatorCard`, etc.).*
+
+---
+
+## Phase 4 — P4 (Additional Widgets)
+All follow the exact same `WidgetProvider` interface.
+- **StockWidget**: Triggers on financial keywords.
+- **RouterDecisionWidget**: Always fires to show model routing logic.
+- **ModelStatusWidget**: Always fires to show latency/health.
+- **MemoryWidget**: Reads from `context.memory_facts`.
+- **CostAnalyticsWidget**: Always fires to show token usage.
+
+---
+
+## Next Steps: Implementation
+The specification is locked in and mathematically sound.

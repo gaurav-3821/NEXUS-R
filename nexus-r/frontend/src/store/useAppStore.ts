@@ -18,6 +18,7 @@ export interface Message {
     route: string;
     latency_ms: number;
     cost: number;
+    reasoning_tokens?: number;
   };
 }
 

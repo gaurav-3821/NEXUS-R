@@ -71,6 +71,7 @@ class ModelStreamChunk:
     used_mock: bool
     fallback_used: bool
     done: bool = False
+    reasoning_tokens: int | None = None
 
 
 class ModelRegistry:
@@ -856,11 +857,6 @@ class ModelRegistry:
     ) -> AsyncIterator[ModelStreamChunk]:
 
         if provider.provider_kind != "local":
-            from litellm import acompletion
-            from litellm.exceptions import (
-                AuthenticationError, LiteLLMTimeout
-            )
-            
             api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
             if not api_key:
                 raise ProviderAuthError(
@@ -877,6 +873,24 @@ class ModelRegistry:
                 msg_content = [{"type": "text", "text": prompt}]
                 for img in images:
                     msg_content.append({"type": "image_url", "image_url": {"url": img}})
+            
+            # Use direct OpenRouter API with reasoning support
+            if self.config.models.byok_secret_name == "openrouter_api_key":
+                api_base = "https://openrouter.ai/api/v1"
+                async for chunk in self._openrouter_stream(
+                    provider=provider,
+                    api_key=api_key,
+                    api_base=api_base,
+                    messages=[{"role": "user", "content": msg_content}],
+                    fallback_used=fallback_used,
+                ):
+                    yield chunk
+                return
+            
+            from litellm import acompletion
+            from litellm.exceptions import (
+                AuthenticationError, LiteLLMTimeout
+            )
                     
             try:
                 response = await acompletion(
@@ -904,7 +918,6 @@ class ModelRegistry:
                     done=True,
                 )
             except Exception as e:
-                # If streaming fails, we could potentially retry, but we'll surface the error
                 raise self._classify_provider_error(e, provider)
             return
         if provider is self.local:
@@ -962,6 +975,81 @@ class ModelRegistry:
                     )
                 if not saw_done:
                     raise RuntimeError("Provider stream ended before a done marker was received.")
+
+    async def _openrouter_stream(
+        self,
+        provider: StaticModelProvider,
+        api_key: str,
+        api_base: str,
+        messages: list[dict],
+        fallback_used: bool,
+    ) -> AsyncIterator[ModelStreamChunk]:
+
+        payload = {
+            "model": provider.name,
+            "messages": messages,
+            "stream": True,
+            "reasoning": {"enabled": True},
+            "temperature": 0,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        timeout = httpx.Timeout(self.config.models.stream_timeout_seconds)
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            async with client.stream("POST", f"{api_base}/chat/completions", json=payload, headers=headers) as resp:
+                resp.raise_for_status()
+                saw_done = False
+                reasoning_tokens: int | None = None
+
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+
+                    data = json.loads(data_str)
+                    usage = data.get("usage")
+                    if usage:
+                        saw_done = True
+                        reasoning_tokens = usage.get("reasoning_tokens") or usage.get("reasoningTokens")
+                        yield ModelStreamChunk(
+                            text="",
+                            model_name=provider.name,
+                            used_mock=False,
+                            fallback_used=fallback_used,
+                            done=True,
+                            reasoning_tokens=reasoning_tokens,
+                        )
+                        continue
+
+                    choices = data.get("choices", [])
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta", {})
+                    text = delta.get("content", "") or ""
+                    if text:
+                        yield ModelStreamChunk(
+                            text=text,
+                            model_name=provider.name,
+                            used_mock=False,
+                            fallback_used=fallback_used,
+                            done=False,
+                        )
+
+                if not saw_done:
+                    yield ModelStreamChunk(
+                        text="",
+                        model_name=provider.name,
+                        used_mock=False,
+                        fallback_used=fallback_used,
+                        done=True,
+                        reasoning_tokens=reasoning_tokens,
+                    )
 
     async def _litellm_completion(
         self,

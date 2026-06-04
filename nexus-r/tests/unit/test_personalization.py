@@ -90,35 +90,32 @@ def test_behavior_tracker(temp_identity_store):
     tracker = BehaviorTracker(temp_identity_store)
     
     # Test Confused -> Simplify
-    tracker.record_signal("scroll_event", 1)
-    tracker.record_signal("scroll_event", 1)
-    tracker.record_signal("scroll_event", 1)
-    tracker.record_signal("scroll_event", 1)
-    tracker.record_signal("scroll_event", 1)
-    tracker.record_signal("scroll_event", 1) # >5
-    tracker.record_signal("time_on_answer", 150) # > 120
+    for _ in range(15):
+        tracker.record_signal("scroll_event", 1)
+    tracker.record_signal("time_on_answer", 300)
+    for _ in range(3):
+        tracker.record_signal("interrupted", 1)
     
     data = temp_identity_store.read()
     assert "inferred_preferences" in data
     assert "complexity" in data["inferred_preferences"]
-    assert "simplify" in data["inferred_preferences"]["complexity"]
+    assert "simplify" in data["inferred_preferences"]["complexity"]["value"]
     
     # Test wants concise
-    tracker.record_signal("copy", "E=mc^2")
-    tracker.record_signal("copy", "F=ma")
+    for _ in range(5):
+        tracker.record_signal("copy", "E=mc^2")
     
     data = temp_identity_store.read()
     assert "style" in data["inferred_preferences"]
-    assert "concise" in data["inferred_preferences"]["style"]
+    assert "concise" in data["inferred_preferences"]["style"]["value"]
     
     # Test wants derivation
-    tracker.record_signal("follow_up", "why did you do that?")
-    tracker.record_signal("follow_up", "why?")
-    tracker.record_signal("follow_up", "but why?")
+    for _ in range(5):
+        tracker.record_signal("follow_up", "why did you do that?")
     
     data = temp_identity_store.read()
     assert "depth" in data["inferred_preferences"]
-    assert "deep derivations" in data["inferred_preferences"]["depth"]
+    assert "deep technical derivations" in data["inferred_preferences"]["depth"]["value"]
 
 @pytest.mark.parametrize("expr, expected", [
     ("2 + 2", "4"),

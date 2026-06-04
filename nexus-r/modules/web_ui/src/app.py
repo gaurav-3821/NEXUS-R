@@ -13,12 +13,16 @@ from fastapi import FastAPI, HTTPException, Request, Depends, WebSocket, Backgro
 from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from nexus_r.events import Event, PermissionTier
 
 
 class DownloadRequest(BaseModel):
+    model_name: str
+    url: str = ""
+
+class DeleteRequest(BaseModel):
     model_name: str
 
 
@@ -47,10 +51,13 @@ class ConfigRequest(BaseModel):
     routingProfile: RoutingProfile | None = None
 
 class ChatRequest(BaseModel):
-    message: str
+    message: str = Field(..., max_length=10000)
     model: str | None = None
     conversation_id: str | None = None
     images: list[str] | None = None
+    mode: str = "balanced"
+    search_enabled: bool = False
+    search_sources: list[str] = Field(default_factory=lambda: ["web"])
 
 class HITLResumeRequest(BaseModel):
     message_id: str
@@ -760,13 +767,18 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         _check_rate_limit("chat")
         if not request.message.strip():
             raise HTTPException(status_code=422, detail="Message cannot be empty")
+        if len(request.message) > 10000:
+            raise HTTPException(status_code=422, detail="Message too long")
         if _chat_handler is None:
             raise HTTPException(status_code=501, detail="Chat handler not available")
         return await _chat_handler.send_message(
             message=request.message, 
             model=request.model, 
             conversation_id=request.conversation_id,
-            images=request.images
+            images=request.images,
+            mode=request.mode,
+            search_enabled=request.search_enabled,
+            search_sources=request.search_sources
         )
 
     @app.post("/api/v1/chat/stream")
@@ -778,6 +790,8 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         _check_rate_limit("chat")
         if not request.message.strip():
             raise HTTPException(status_code=422, detail="Message cannot be empty")
+        if len(request.message) > 10000:
+            raise HTTPException(status_code=422, detail="Message too long")
         if _chat_handler is None:
             raise HTTPException(status_code=501, detail="Chat handler not available")
         
@@ -786,7 +800,10 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                 message=request.message, 
                 model=request.model, 
                 conversation_id=request.conversation_id,
-                images=request.images
+                images=request.images,
+                mode=request.mode,
+                search_enabled=request.search_enabled,
+                search_sources=request.search_sources
             ),
             media_type="text/event-stream"
         )
@@ -991,9 +1008,16 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         }
         
         from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
+        filtered_options = []
+        for opt in CLOUD_PROVIDER_OPTIONS:
+            if opt["value"] == "none":
+                filtered_options.append(opt)
+                continue
+            if os.environ.get(opt["env_var"]) or (_secret_registry and _secret_registry.get_secret(opt["secret_name"])):
+                filtered_options.append({**opt, "api_key_configured": True})
         return {
             "current": current,
-            "cloud_options": CLOUD_PROVIDER_OPTIONS,
+            "cloud_options": filtered_options,
         }
 
     @app.get("/api/v1/models/routing-profile")
@@ -1056,10 +1080,62 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
     @app.post("/api/v1/models/download")
     async def models_download(req: DownloadRequest, token: str = Query("")):
         _check_auth(token)
-        _check_rate_limit("models_download")
+        _check_rate_limit("models")
         if _model_manager is None:
             raise HTTPException(status_code=500, detail="Model manager not initialized")
-        return _model_manager.start_download(req.model_name)
+        return _model_manager.start_download(req.model_name, url=getattr(req, 'url', ''))
+
+    @app.get("/api/v1/models/hf/search")
+    async def models_hf_search(
+        token: str = Query(""),
+        query: str = Query(""),
+        filter_tag: str = Query(""),
+        sort: str = Query("downloads"),
+        limit: int = Query(20, ge=1, le=100)
+    ):
+        _check_auth(token)
+        _check_rate_limit("models")
+        if _model_manager is None:
+            raise HTTPException(status_code=501, detail="Model manager not available")
+        results = await _model_manager.hf_client.search_models(query, filter_tag, sort, limit)
+        return {"results": results}
+
+    @app.get("/api/v1/models/openrouter/list")
+    async def models_openrouter_list(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models")
+        if _model_manager is None:
+            raise HTTPException(status_code=501, detail="Model manager not available")
+        results = await _model_manager.openrouter_client.list_models()
+        return {"results": results}
+
+    @app.post("/api/v1/models/download-pause/{job_id}")
+    async def models_download_pause(job_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models")
+        if _model_manager is None:
+            raise HTTPException(status_code=501, detail="Model manager not available")
+        success = _model_manager.pause_download(job_id)
+        return {"success": success}
+
+    @app.post("/api/v1/models/download-resume/{job_id}")
+    async def models_download_resume(job_id: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models")
+        if _model_manager is None:
+            raise HTTPException(status_code=501, detail="Model manager not available")
+        success = _model_manager.resume_download(job_id)
+        return {"success": success}
+
+
+    @app.post("/api/v1/models/delete")
+    async def models_delete(req: DeleteRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("models")
+        if _model_manager is None:
+            raise HTTPException(status_code=501, detail="Model manager not available")
+        success = await _model_manager.delete_local_model(req.model_name)
+        return {"success": success}
 
     @app.post("/api/v1/models/download-cancel/{job_id}")
     async def models_download_cancel(job_id: str, token: str = Query("")):
@@ -1105,10 +1181,10 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
             byok_model = cfg.models.byok_model
             for opt in CLOUD_PROVIDER_OPTIONS:
-                if opt["model"] == byok_model and opt["value"] != "none":
+                # If there's an api key, assume it's configured
+                if os.environ.get(opt["env_var"]):
                     cloud_provider = opt["value"]
-                    if os.environ.get(opt["env_var"]):
-                        api_key_configured = True
+                    api_key_configured = True
                     break
         
         registry = getattr(_chat_handler.router, "models", None)
@@ -1185,13 +1261,23 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             results.append({
                 "id": opt["value"],
                 "name": opt["label"].split(" (")[0],  # Extract just the name
-                "model": opt["model"],
                 "has_key": has_key,
                 "status": "Active" if has_key else "Inactive",
                 "key_prefix": opt["key_prefix"],
+                "base_url": opt.get("base_url", ""),
             })
             
         return {"providers": results}
+
+    @app.get("/api/v1/providers/{provider}/models")
+    async def get_provider_models(provider: str, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("provider_models")
+        if _model_manager is None:
+            raise HTTPException(status_code=500, detail="Model manager not initialized")
+            
+        models = await _model_manager.list_cloud_models(provider)
+        return {"models": models}
 
     @app.post("/api/v1/providers")
     async def update_provider(req: ProviderRequest, token: str = Query("")):

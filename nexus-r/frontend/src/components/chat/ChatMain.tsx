@@ -83,6 +83,11 @@ export default function ChatMain() {
                         <div>Route: {msg.metadata.route}</div>
                         <div>Latency: {Math.round(msg.metadata.latency_ms)}ms</div>
                         <div>Cost: ${msg.metadata.cost.toFixed(6)}</div>
+                        {msg.metadata.reasoning_tokens !== undefined && msg.metadata.reasoning_tokens !== null && (
+                          <div className="text-purple-500 dark:text-purple-400">
+                            Reasoning: {msg.metadata.reasoning_tokens} tokens
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

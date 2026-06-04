@@ -116,6 +116,7 @@ class CognitionRouter:
                 "used_mock": chunk.used_mock,
                 "fallback_used": chunk.fallback_used,
                 "done": chunk.done,
+                "reasoning_tokens": chunk.reasoning_tokens,
             }
 
     def _assign_base_tier(self, intent: IntentResult) -> int:
@@ -203,10 +204,7 @@ class CognitionRouter:
         )
 
     def _probe_allowed(self, intent: IntentResult, base_tier: int, adj_tier: int) -> bool:
-        if adj_tier > MAX_CAR_TIER:
-            return False
-        if CAR_TIERS[adj_tier]["kind"] == "managed":
-            return False
-        combined = CAR_TIERS[base_tier]["cost"] + CAR_TIERS[adj_tier]["cost"]
-        cap = self._cost_cap_for_task(intent)
-        return combined <= cap * 1.5
+        # Parallel probe is disabled for latency optimization.
+        # The probe makes 2 full LLM inference calls just to decide routing,
+        # adding 2-8 seconds of overhead. Direct tier assignment is sufficient.
+        return False

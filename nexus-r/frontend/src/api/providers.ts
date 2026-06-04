@@ -3,10 +3,10 @@ import { apiFetch, apiPost, apiDelete } from './client';
 export interface Provider {
   id: string;
   name: string;
-  model: string;
   has_key: boolean;
   status: 'Active' | 'Inactive';
   key_prefix: string;
+  base_url?: string;
 }
 
 export async function getProviders(): Promise<{ providers: Provider[] }> {
