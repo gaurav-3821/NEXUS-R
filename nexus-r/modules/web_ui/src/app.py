@@ -545,6 +545,10 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             cfg.models.byok_secret_name,
             cfg.models.byok_api_key_env,
         )
+        _secret_registry.bootstrap_from_environment(
+            "openrouter_api_key",
+            "NEXUS_OPENROUTER_API_KEY",
+        )
 
         router = CognitionRouter(
             cfg,

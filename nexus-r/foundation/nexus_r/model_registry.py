@@ -874,13 +874,16 @@ class ModelRegistry:
                 for img in images:
                     msg_content.append({"type": "image_url", "image_url": {"url": img}})
             
-            # Use direct OpenRouter API with reasoning support
-            if self.config.models.byok_secret_name == "openrouter_api_key":
-                api_base = "https://openrouter.ai/api/v1"
+            # Route bare model names through OpenRouter if its API key exists.
+            # This handles model IDs like "moonshotai/kimi-k2.6:free" selected from
+            # the chat dropdown regardless of which provider is "default" in settings.
+            KNOWN_LITELLM_PREFIXES = ("groq/", "openai/", "anthropic/", "google/", "ollama/")
+            openrouter_key = self.secret_registry.get_secret("openrouter_api_key") or os.environ.get("NEXUS_OPENROUTER_API_KEY")
+            if openrouter_key and not provider.name.startswith(KNOWN_LITELLM_PREFIXES):
                 async for chunk in self._openrouter_stream(
                     provider=provider,
-                    api_key=api_key,
-                    api_base=api_base,
+                    api_key=openrouter_key,
+                    api_base="https://openrouter.ai/api/v1",
                     messages=[{"role": "user", "content": msg_content}],
                     fallback_used=fallback_used,
                 ):
@@ -989,7 +992,6 @@ class ModelRegistry:
             "model": provider.name,
             "messages": messages,
             "stream": True,
-            "reasoning": {"enabled": True},
             "temperature": 0,
         }
         headers = {
@@ -999,24 +1001,50 @@ class ModelRegistry:
         }
         timeout = httpx.Timeout(self.config.models.stream_timeout_seconds)
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            async with client.stream("POST", f"{api_base}/chat/completions", json=payload, headers=headers) as resp:
-                resp.raise_for_status()
-                saw_done = False
-                reasoning_tokens: int | None = None
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("POST", f"{api_base}/chat/completions", json=payload, headers=headers) as resp:
+                    resp.raise_for_status()
+                    saw_done = False
+                    reasoning_tokens: int | None = None
 
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        break
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
 
-                    data = json.loads(data_str)
-                    usage = data.get("usage")
-                    if usage:
-                        saw_done = True
-                        reasoning_tokens = usage.get("reasoning_tokens") or usage.get("reasoningTokens")
+                        data = json.loads(data_str)
+                        usage = data.get("usage")
+                        if usage:
+                            saw_done = True
+                            reasoning_tokens = usage.get("reasoning_tokens") or usage.get("reasoningTokens")
+                            yield ModelStreamChunk(
+                                text="",
+                                model_name=provider.name,
+                                used_mock=False,
+                                fallback_used=fallback_used,
+                                done=True,
+                                reasoning_tokens=reasoning_tokens,
+                            )
+                            continue
+
+                        choices = data.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+                        text = delta.get("content", "") or ""
+                        if text:
+                            yield ModelStreamChunk(
+                                text=text,
+                                model_name=provider.name,
+                                used_mock=False,
+                                fallback_used=fallback_used,
+                                done=False,
+                            )
+
+                    if not saw_done:
                         yield ModelStreamChunk(
                             text="",
                             model_name=provider.name,
@@ -1025,31 +1053,12 @@ class ModelRegistry:
                             done=True,
                             reasoning_tokens=reasoning_tokens,
                         )
-                        continue
-
-                    choices = data.get("choices", [])
-                    if not choices:
-                        continue
-                    delta = choices[0].get("delta", {})
-                    text = delta.get("content", "") or ""
-                    if text:
-                        yield ModelStreamChunk(
-                            text=text,
-                            model_name=provider.name,
-                            used_mock=False,
-                            fallback_used=fallback_used,
-                            done=False,
-                        )
-
-                if not saw_done:
-                    yield ModelStreamChunk(
-                        text="",
-                        model_name=provider.name,
-                        used_mock=False,
-                        fallback_used=fallback_used,
-                        done=True,
-                        reasoning_tokens=reasoning_tokens,
-                    )
+        except httpx.HTTPStatusError as exc:
+            raise self._classify_provider_error(exc, provider)
+        except httpx.TimeoutException as exc:
+            raise self._classify_provider_error(exc, provider)
+        except httpx.ConnectError as exc:
+            raise self._classify_provider_error(exc, provider)
 
     async def _litellm_completion(
         self,

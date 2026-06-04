@@ -26,7 +26,9 @@ class SearchProviderRegistry:
     async def search(self, query, **kwargs) -> SearchResponse:
         for p in self._search_providers:
             if await self._is_healthy(p):
-                return await p.search(query, **kwargs)
+                resp = await p.search(query, **kwargs)
+                if resp.results:
+                    return resp
         return SearchResponse(results=[], suggestions=[], total=0)
 
     async def extract(self, url: str) -> str:
