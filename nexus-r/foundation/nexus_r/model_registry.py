@@ -956,7 +956,7 @@ class ModelRegistry:
             
             from litellm import acompletion
             from litellm.exceptions import (
-                AuthenticationError, LiteLLMTimeout
+                AuthenticationError, Timeout as LiteLLMTimeout
             )
                     
             try:

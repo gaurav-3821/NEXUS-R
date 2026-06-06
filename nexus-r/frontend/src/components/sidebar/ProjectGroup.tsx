@@ -73,7 +73,7 @@ export function UncategorizedGroup({ conversations }: { conversations: ProjectCo
 }
 
 function ConversationRow({ conv, projectId }: { conv: ProjectConversation; projectId?: string }) {
-  const { currentConversationId, setCurrentConversation, loadConversationMessages, deleteConversation } = useAppStore();
+  const { currentConversationId, setCurrentConversation, loadConversationMessages, deleteConversation, toggleSidebar } = useAppStore();
   const { projects, addConversation, removeConversation } = useProjectsStore();
   const navigate = useNavigate();
   const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -96,6 +96,7 @@ function ConversationRow({ conv, projectId }: { conv: ProjectConversation; proje
         onClick={() => {
           setCurrentConversation(conv.id);
           loadConversationMessages(conv.id);
+          if (window.innerWidth < 768) toggleSidebar();
           navigate('/');
         }}
         className={clsx(

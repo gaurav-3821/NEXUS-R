@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
-import { Zap, Gauge, Target, Globe, Search, X } from 'lucide-react';
+import { Zap, Gauge, Target, Globe, Search, X, AlertTriangle } from 'lucide-react';
+import { Tooltip } from '../ui/Tooltip';
 import clsx from 'clsx';
 
 const MODES = [
@@ -54,6 +55,7 @@ export default function ChatToolbar() {
 
 
   return (
+    <div className="flex flex-col gap-1">
     <div className="flex items-center gap-3 px-1 py-1.5">
       {/* Mode Selector with sliding highlight */}
       <div ref={modeContainerRef} className="relative flex items-center gap-0.5 bg-gray-100 dark:bg-slate-800/60 rounded-lg p-0.5">
@@ -86,18 +88,37 @@ export default function ChatToolbar() {
       <div className="w-px h-5 bg-gray-200 dark:bg-slate-700" />
 
       {/* Search Toggle */}
-      <button
-        onClick={() => setSearchEnabled(!searchEnabled)}
-        className={clsx(
-          "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ease-in-out",
-          searchEnabled
-            ? "bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 shadow-[0_0_8px_rgba(99,102,241,0.4)] dark:shadow-[0_0_8px_rgba(129,140,248,0.3)]"
-            : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-        )}
+      <Tooltip
+        content={
+          optimizationMode === 'speed'
+            ? 'Search is only available in Balanced or Quality mode. Switch mode to enable web research.'
+            : 'Enable web search. The model will use retrieved sources to answer your question.'
+        }
+        position="bottom"
       >
-        <Search size={12} className={clsx("transition-transform duration-300", searchEnabled && "scale-110")} />
-        Search
-      </button>
+        <button
+          onClick={() => {
+            if (optimizationMode === 'speed') {
+              setOptimizationMode('balanced');
+              setSearchEnabled(true);
+              return;
+            }
+            setSearchEnabled(!searchEnabled);
+          }}
+          className={clsx(
+            "flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium transition-all duration-300 ease-in-out",
+            searchEnabled
+              ? "bg-accent-50 dark:bg-accent-900/20 text-accent-700 dark:text-accent-300 shadow-[0_0_8px_rgba(99,102,241,0.4)] dark:shadow-[0_0_8px_rgba(129,140,248,0.3)]"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+          )}
+        >
+          <Search size={12} className={clsx("transition-transform duration-300", searchEnabled && "scale-110")} />
+          Search
+          {searchEnabled && optimizationMode === 'speed' && (
+            <AlertTriangle size={10} className="ml-0.5 text-amber-500" />
+          )}
+        </button>
+      </Tooltip>
 
       {/* Source Pills with sliding highlight — visible when search is enabled */}
       {searchEnabled && (
@@ -127,6 +148,22 @@ export default function ChatToolbar() {
             })}
           </div>
         </>
+      )}
+    </div>
+
+      {searchEnabled && optimizationMode === 'speed' && (
+        <div className="flex items-start gap-2 mx-1 px-2.5 py-1.5 rounded-md bg-amber-50/70 dark:bg-amber-900/15 border border-amber-200/60 dark:border-amber-800/40 text-[11px] text-amber-800 dark:text-amber-200">
+          <AlertTriangle size={12} className="shrink-0 mt-0.5 text-amber-500" />
+          <div className="flex-1 leading-snug">
+            <span className="font-semibold">Search disabled:</span> Speed mode skips web research to keep responses fast.
+            <button
+              onClick={() => setOptimizationMode('balanced')}
+              className="ml-1 underline font-medium hover:text-amber-900 dark:hover:text-amber-100"
+            >
+              Switch to Balanced
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

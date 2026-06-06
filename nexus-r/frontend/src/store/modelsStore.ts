@@ -56,26 +56,44 @@ export const useModelsStore = create<ModelsStore>()(
 
       loadModels: async () => {
         set({ isLoading: true, error: null });
-        try {
-          const [config, status, local] = await Promise.all([
-            fetchConfig(),
-            getModelsStatus(),
-            getLocalModels()
-          ]);
+        const results = await Promise.allSettled([
+          fetchConfig(),
+          getModelsStatus(),
+          getLocalModels()
+        ]);
 
-          const allLocal = local?.all ?? [];
+        let localModels: any[] = [];
+        let cloudOptions: any[] = [];
+        let configData: any = null;
+        const errors: string[] = [];
 
-          set({
-            currentConfig: config.current,
-            cloudOptions: status.cloud_options,
-            localModels: allLocal,
-            routingProfile: config.routingProfile,
-            isLoading: false
-          });
-
-        } catch (error: any) {
-          set({ error: error.message || 'Failed to load models', isLoading: false });
+        if (results[0].status === 'fulfilled') {
+          configData = results[0].value;
+        } else {
+          errors.push('config: ' + (results[0].reason?.message || 'failed'));
         }
+
+        if (results[1].status === 'fulfilled') {
+          cloudOptions = results[1].value.cloud_options || [];
+          if (!configData) {
+            configData = { current: results[1].value.current, routingProfile: null };
+          }
+        } else {
+          errors.push('status: ' + (results[1].reason?.message || 'failed'));
+        }
+
+        if (results[2].status === 'fulfilled') {
+          localModels = results[2].value?.all ?? [];
+        }
+
+        set({
+          currentConfig: configData?.current || null,
+          cloudOptions,
+          localModels,
+          routingProfile: configData?.routingProfile || null,
+          isLoading: false,
+          error: errors.length > 0 ? errors.join('; ') : null,
+        });
       },
 
       updateRoutingProfile: async (profileUpdates: Partial<RoutingProfile>) => {

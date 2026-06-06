@@ -1,8 +1,10 @@
+import { useEffect, useRef } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { APP_NAME } from '../../constants';
 import { RefreshCw, Sparkles, Bot } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatToolbar from './ChatToolbar';
+import WidgetDispatcher from './widgets';
 import clsx from 'clsx';
 import { useAppearanceStore } from '../../store/appearanceStore';
 import ReactMarkdown from 'react-markdown';
@@ -11,14 +13,42 @@ import remarkGfm from 'remark-gfm';
 export default function ChatMain() {
   const { messages } = useAppStore();
   const { compactMode, showResponseMetadata } = useAppearanceStore();
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
 
   return (
     <div className="flex flex-col h-full relative w-full items-center">
-      
+
 
       {/* Messages Scroll Area */}
-      <div className={clsx("flex-1 overflow-y-auto w-full scroll-smooth", compactMode ? "pt-4 pb-2" : "pt-8 pb-4")}>
+      <div className={clsx("flex-1 overflow-y-auto w-full scroll-smooth", messages.length === 0 ? "pt-8 pb-8" : (compactMode ? "pt-4 pb-44" : "pt-8 pb-44"))}>
         <div className={clsx("max-w-4xl mx-auto px-4 flex flex-col", compactMode ? "gap-4" : "gap-10")}>
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center flex-1 min-h-[60vh] text-center pb-32 md:pb-40">
+              <div className="flex items-start justify-center gap-1 md:gap-2">
+                {[
+                  {l:'N', w:'Neural'},
+                  {l:'E', w:'Engine'},
+                  {l:'X', w:'for eXecution'},
+                  {l:'U', w:'Understanding'},
+                  {l:'S', w:'Synthesis'},
+                  {l:'–', w:'', small:true},
+                  {l:'R', w:'Runtime'},
+                ].map((it, i) => (
+                  <div key={i} className="flex flex-col items-center w-12 md:w-16">
+                    <div className="h-20 md:h-32 flex items-center justify-center">
+                      <span className={clsx("font-bold text-accent-600 dark:text-accent-400 leading-none", it.small ? "text-5xl md:text-7xl" : "text-7xl md:text-9xl")}>{it.l}</span>
+                    </div>
+                    {it.w && <span className="text-[10px] md:text-xs text-gray-500 dark:text-gray-400 mt-2 leading-tight text-center">{it.w}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {messages.map((msg) => (
             <div 
               key={msg.id} 
@@ -78,6 +108,15 @@ export default function ChatMain() {
                   )}
                 </div>
 
+                {/* Widgets (weather, calculator, stock, citations, etc.) */}
+                {msg.widgets && msg.widgets.length > 0 && (
+                  <div className="mt-3 flex flex-col gap-2 not-prose">
+                    {msg.widgets.map((w, i) => (
+                      <WidgetDispatcher key={i} widget={w} />
+                    ))}
+                  </div>
+                )}
+
                 {/* Regenerate Button for Assistant */}
                 {msg.role === 'assistant' && msg.id !== 'welcome' && !msg.streaming && (
                   <div className="mt-4 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -104,15 +143,21 @@ export default function ChatMain() {
               </div>
             </div>
           ))}
+          <div ref={messagesEndRef} />
         </div>
       </div>
 
-      {/* Toolbar + Input Area */}
-      <div className="shrink-0 w-full relative">
-        <div className="max-w-4xl mx-auto px-4">
-          <ChatToolbar />
+      {/* Toolbar + Input Area — centered in viewport for empty state, fixed at bottom when there are messages */}
+      <div className={clsx(
+        "fixed left-0 right-0 z-20 pointer-events-none",
+        messages.length === 0 ? "top-1/2 -translate-y-[60%]" : "bottom-0"
+      )}>
+        <div className="pointer-events-auto">
+          <div className="max-w-4xl mx-auto px-4">
+            <ChatToolbar />
+          </div>
+          <ChatInput />
         </div>
-        <ChatInput />
       </div>
     </div>
   );

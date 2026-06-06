@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { sendChat, streamChat, interruptChat, getConversations, getHistory, deleteConversation as apiDeleteConversation, clearAllConversations as apiClearAll } from '../api/chat';
 
+export interface MessageWidget {
+  type: string;
+  data: any;
+  title?: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -13,6 +19,7 @@ export interface Message {
   auto_model?: string;
   auto_model_reason?: string;
   reasoning_content?: string;
+  widgets?: MessageWidget[];
   metadata?: {
     model: string;
     provider: string;
@@ -160,6 +167,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       await streamChat(params, (event) => {
         if (event.type === 'status') {
           set({ workflowState: event.value, workflowStage: event.value });
+        } else if (event.type === 'widget') {
+          const widget = {
+            type: event.widget_type || event.type,
+            data: event.data,
+            title: event.title,
+          };
+          set((s) => {
+            const updatedMsgs = s.messages.map(m => {
+              if (m.id === msgId) {
+                return { ...m, widgets: [...(m.widgets || []), widget] };
+              }
+              return m;
+            });
+            return { messages: updatedMsgs };
+          });
         } else if (event.type === 'token' || event.type === 'answer') {
           const text = event.value || event.content || '';
           set((s) => {
@@ -260,6 +282,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         role: m.role,
         content: m.content,
         time: new Date(m.timestamp).getTime(),
+        widgets: m.widgets || undefined,
         metadata: m.model ? {
           model: m.model,
           provider: m.provider || '',

@@ -52,12 +52,14 @@ class StockWidget(WidgetProvider):
         )
 
     def _extract_word_ticker(self, query: str) -> str | None:
-        words = query.lower().split()
-        for i, w in enumerate(words):
-            if w in ("stock", "price", "ticker") and i + 1 < len(words):
-                candidate = words[i + 1].upper().strip(",.!?")
-                if re.match(r'^[A-Z]{1,5}$', candidate):
-                    return candidate
+        words = query.split()
+        keywords_upper = {k.upper() for k in STOCK_KEYWORDS}
+        for w in words:
+            clean = w.strip(",.!?")
+            if not clean:
+                continue
+            if clean.isupper() and re.match(r'^[A-Z]{1,5}$', clean) and clean not in keywords_upper:
+                return clean
         return None
 
     async def _fetch_quote(self, symbol: str) -> dict | None:

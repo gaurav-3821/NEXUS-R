@@ -107,13 +107,14 @@ class ChatHandler:
         # Initialize Search Registry & Research Engine
         from modules.cognition_router.src.providers.search.__init__ import SearchProviderRegistry
         from modules.cognition_router.src.providers.search.searxng_provider import SearxngProvider
+        from modules.cognition_router.src.providers.search.duckduckgo_provider import DuckDuckGoProvider
         from modules.cognition_router.src.providers.search.playwright_provider import PlaywrightProvider
         from modules.cognition_router.src.research_engine import ResearchEngine
         
         self.search_registry = SearchProviderRegistry()
-        self.search_registry.register(SearxngProvider(), role="search")
+        self.search_registry.register(SearxngProvider(), role="search", provider_id="searxng")
+        self.search_registry.register(DuckDuckGoProvider(), role="search", provider_id="duckduckgo")
         playwright_provider = PlaywrightProvider(self.browser)
-        self.search_registry.register(playwright_provider, role="search")
         self.search_registry.register(playwright_provider, role="extract")
         
         self.research_engine = ResearchEngine(self.search_registry)
@@ -724,16 +725,17 @@ When you output a `browser_action`, the system will execute it on the page, chec
 
         return None, intent, routing, msg_id, ts, preferred, conversation_id
 
-    async def _run_widgets(self, raw_input: str, research_result=None, router_decision=None):
+    async def _run_widgets(self, raw_input: str, research_result=None, router_decision=None, include_memory: bool = False):
         """Build PipelineContext and run all registered widgets."""
         memory_facts = []
-        try:
-            if not _is_trivial_message(raw_input):
-                facts = await self.memory_engine.recall(raw_input, top_k=10)
-                if facts:
-                    memory_facts = facts
-        except Exception:
-            pass
+        if include_memory:
+            try:
+                if not _is_trivial_message(raw_input):
+                    facts = await self.memory_engine.recall(raw_input, top_k=10)
+                    if facts:
+                        memory_facts = facts
+            except Exception:
+                pass
         from modules.cognition_router.src.research_engine import PipelineContext
         ctx = PipelineContext(
             raw_input=raw_input,
@@ -841,6 +843,11 @@ When you output a `browser_action`, the system will execute it on the page, chec
             message=message, model=model, conversation_id=conversation_id, telemetry=telemetry, images=images
         )
 
+        current_task = asyncio.current_task()
+        if current_task:
+            self._active_tasks[msg_id] = current_task
+            current_task.add_done_callback(lambda t: self._active_tasks.pop(msg_id, None))
+
         if early_res is not None:
             yield f"data: {json.dumps({'type': 'status', 'value': 'routing'})}\n\n"
             yield f"data: {json.dumps({'type': 'token', 'value': early_res.get('content', '')})}\n\n"
@@ -869,6 +876,26 @@ When you output a `browser_action`, the system will execute it on the page, chec
         full_text = ""
         reasoning_text = ""
         reasoning_tokens: int | None = None
+        
+        route_name = routing.selected_tier.name if hasattr(routing.selected_tier, "name") else str(routing.selected_tier)
+        widget_task = asyncio.create_task(self._run_widgets(
+            raw_input=message,
+            research_result=research if search_enabled and mode != "speed" else None,
+            router_decision={"model": preferred, "tier": route_name, "cost_estimate": routing.cost_estimate},
+        ))
+        logger.info("[WIDGET] Task started for: %s", message[:60])
+        
+        try:
+            early_widgets = await asyncio.wait_for(widget_task, timeout=3.0)
+            logger.info("[WIDGET] Early widgets received: %d", len(early_widgets))
+            for w in early_widgets:
+                yield f"data: {json.dumps({'type': 'widget', 'widget_type': w['type'], 'data': w['data'], 'title': w['title']})}\n\n"
+        except asyncio.TimeoutError:
+            logger.info("[WIDGET] Early timeout (3.0s) - widgets will be emitted after LLM")
+            early_widgets = []
+        except Exception as e:
+            logger.warning("Early widget execution failed: %s", e, exc_info=True)
+            early_widgets = []
         
         # State: 'waiting' (before any <thinking> tag), 'reasoning', 'answering'
         reasoning_state = "waiting"
@@ -973,7 +1000,6 @@ When you output a `browser_action`, the system will execute it on the page, chec
             return
         latency = (datetime.now(timezone.utc) - started).total_seconds() * 1000
         provider = preferred.split("/")[0] if "/" in preferred else "ollama"
-        route_name = routing.selected_tier.name if hasattr(routing.selected_tier, "name") else str(routing.selected_tier)
         
         metadata = {
             "model": preferred,
@@ -986,16 +1012,21 @@ When you output a `browser_action`, the system will execute it on the page, chec
             metadata["reasoning_tokens"] = reasoning_tokens
 
         try:
-            widgets = await self._run_widgets(
-                raw_input=message,
-                research_result=research if search_enabled and mode != "speed" else None,
-                router_decision={"model": preferred, "tier": route_name, "cost_estimate": routing.cost_estimate},
-            )
-            for w in widgets:
-                yield f"data: {json.dumps({'type': 'widget', 'widget_type': w['type'], 'data': w['data'], 'title': w['title']})}\n\n"
+            if widget_task.done():
+                widgets = widget_task.result()
+            else:
+                widgets = await widget_task
         except Exception as wid_e:
             logger.warning("Widget execution failed in SSE path: %s", wid_e, exc_info=True)
             widgets = []
+        if widgets:
+            emitted_keys = {(w.get('type'), w.get('title')) for w in (early_widgets or [])}
+            for w in widgets:
+                key = (w.get('type'), w.get('title'))
+                if key in emitted_keys:
+                    continue
+                emitted_keys.add(key)
+                yield f"data: {json.dumps({'type': 'widget', 'widget_type': w['type'], 'data': w['data'], 'title': w['title']})}\n\n"
         
         yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred, 'metadata': metadata})}\n\n"
         

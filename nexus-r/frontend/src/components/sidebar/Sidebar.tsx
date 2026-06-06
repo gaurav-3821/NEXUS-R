@@ -76,6 +76,7 @@ export default function Sidebar() {
             className={clsx("flex-1 primary-button rounded-full flex items-center justify-center gap-2", compactMode ? "py-1.5 px-3" : "py-2.5 px-4")}
             onClick={() => {
               startNewChat();
+              if (window.innerWidth < 768) toggleSidebar();
               navigate('/');
             }}
           >

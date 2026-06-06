@@ -8,6 +8,7 @@ import { PageHeader } from '../ui/PageHeader';
 import { SearchBar } from '../ui/SearchBar';
 import { SettingsNavigation } from './ui/SettingsNavigation';
 import { SettingsCard } from './ui/SettingsCard';
+import ModelBadge from '../ui/ModelBadge';
 import { 
   Settings, Box, Key, Palette, Wrench, Database, Shield, Zap, Code, Link, CloudOff, Info, 
   RefreshCw, ArrowLeft, Server, Globe, ChevronDown, AlertCircle, Bot
@@ -129,9 +130,9 @@ export default function ModelsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            <SummaryRow icon={<Bot size={14} className="text-purple-500" />} label="Reasoning Model" value={routingProfile?.reasoning || 'Unknown'} />
-            <SummaryRow icon={<Bot size={14} className="text-blue-500" />} label="Coding Model" value={routingProfile?.coding || 'Unknown'} />
-            <SummaryRow icon={<Bot size={14} className="text-green-500" />} label="General Model" value={routingProfile?.general || 'Unknown'} />
+            <SummaryRow icon={<ModelBadge modelId={routingProfile?.reasoning || ''} size={14} />} label="Reasoning Model" value={routingProfile?.reasoning || 'Unknown'} />
+            <SummaryRow icon={<ModelBadge modelId={routingProfile?.coding || ''} size={14} />} label="Coding Model" value={routingProfile?.coding || 'Unknown'} />
+            <SummaryRow icon={<ModelBadge modelId={routingProfile?.general || ''} size={14} />} label="General Model" value={routingProfile?.general || 'Unknown'} />
             
             <div className="pt-3 mt-3 border-t border-gray-100 dark:border-slate-800 space-y-3">
               <SummaryRow icon={<Server size={14} className="text-emerald-500" />} label="Local Default" value={currentConfig?.local_model || 'Not configured'} />
@@ -448,7 +449,7 @@ function ModelSelectionRow({
                 className="flex items-center gap-3 px-3 py-1.5 border border-gray-200 dark:border-slate-800 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  <BotIcon />
+                  <ModelBadge modelId={currentValue} size={16} />
                   <span className="text-sm font-bold text-gray-600 dark:text-gray-400 max-w-[150px] truncate">{activeLabel}</span>
                 </div>
                 <ChevronDown size={14} className="text-gray-400 ml-2" />
@@ -479,7 +480,10 @@ function ModelSelectionRow({
                               : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800"
                           )}
                         >
-                          <span className="truncate">{opt.label}</span>
+                          <span className="flex items-center gap-2 truncate">
+                            <ModelBadge modelId={opt.id} size={14} />
+                            {opt.label}
+                          </span>
                         </button>
                       ))
                     )}
@@ -506,16 +510,3 @@ function ModelSelectionRow({
   );
 }
 
-// Simple fallback icon for the model dropdown
-function BotIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 dark:text-gray-400">
-      <path d="M12 8V4H8" />
-      <rect width="16" height="12" x="4" y="8" rx="2" />
-      <path d="M2 14h2" />
-      <path d="M20 14h2" />
-      <path d="M15 13v2" />
-      <path d="M9 13v2" />
-    </svg>
-  );
-}

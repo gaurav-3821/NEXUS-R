@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { useModelsStore } from '../../store/modelsStore';
-import { Paperclip, Send, Square, Bot, ChevronDown, Check, Settings, Star, X, Search } from 'lucide-react';
+import { Paperclip, Send, Square, ChevronDown, Check, Settings, Star, X, Search, Bot } from 'lucide-react';
+import ModelBadge from '../ui/ModelBadge';
 import clsx from 'clsx';
 
 import { useNavigate } from 'react-router-dom';
@@ -115,7 +116,7 @@ export default function ChatInput() {
             onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-[#0f172a] hover:bg-gray-100 rounded-full border border-gray-200 dark:border-slate-800 transition-colors"
           >
-            <Bot size={16} className="text-gray-500 dark:text-gray-400" />
+            <ModelBadge modelId={selectedModel} size={16} />
             <span>{selectedModel}</span>
             <ChevronDown size={14} className="text-gray-400" />
           </button>
@@ -158,7 +159,7 @@ export default function ChatInput() {
                       selectedModel === item.model ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                     )}
                   >
-                    <Bot size={18} className={selectedModel === item.model ? "text-accent-600" : "text-gray-400"} />
+                    <ModelBadge modelId={item.model} size={18} />
                     <div className="flex-1 min-w-0">
                       <div className={clsx("text-sm font-semibold truncate", selectedModel === item.model ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
                         {item.label}
@@ -193,7 +194,7 @@ export default function ChatInput() {
                           selectedModel === id ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                         )}
                       >
-                        <Bot size={18} className={selectedModel === id ? "text-accent-600" : "text-gray-400"} />
+                        <ModelBadge modelId={id} size={18} />
                         <div className="flex-1 min-w-0">
                           <div className={clsx("text-sm font-semibold truncate", selectedModel === id ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
                             {displayName}
@@ -254,7 +255,7 @@ export default function ChatInput() {
                             selectedModel === model.id ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                           )}
                         >
-                          <Bot size={18} className={clsx("shrink-0", selectedModel === model.id ? "text-accent-600" : "text-gray-400")} />
+                          <ModelBadge modelId={model.id} size={18} />
                           <div className="flex-1 min-w-0">
                             <div className={clsx("text-sm font-semibold truncate", selectedModel === model.id ? "text-accent-900 dark:text-accent-300" : "text-gray-800 dark:text-gray-200")}>
                               {model.name || model.id.split('/').pop()}

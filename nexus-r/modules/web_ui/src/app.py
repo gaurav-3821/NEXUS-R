@@ -1107,13 +1107,12 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                 api_key_configured = True
         else:
             from modules.cognition_router.src.model_manager import CLOUD_PROVIDER_OPTIONS
-            byok_model = cfg.models.byok_model
             for opt in CLOUD_PROVIDER_OPTIONS:
-                if opt["model"] == byok_model and opt["value"] != "none":
-                    cloud_provider = opt["value"]
-                    if os.environ.get(opt["env_var"]):
+                if opt["value"] != "none":
+                    if os.environ.get(opt["env_var"]) or (_secret_registry and _secret_registry.get_secret(opt["secret_name"])):
+                        cloud_provider = opt["value"]
                         api_key_configured = True
-                    break
+                        break
         
         current = {
             "local_model": local_model,
