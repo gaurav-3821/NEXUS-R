@@ -49,9 +49,24 @@ export default function ChatMain() {
                   </div>
                 )}
                 
+                {msg.reasoning_content && (
+                  <details 
+                    open={msg.streaming}
+                    className="mb-4 text-sm text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-800/50 rounded-lg overflow-hidden border border-gray-100 dark:border-slate-700/50"
+                  >
+                    <summary className="cursor-pointer select-none font-medium px-4 py-2 hover:bg-gray-100 dark:hover:bg-slate-700/50 transition-colors flex items-center gap-2">
+                      <Bot size={14} />
+                      AI Reasoning Process
+                    </summary>
+                    <div className="p-4 pt-2 whitespace-pre-wrap font-mono text-xs overflow-x-auto opacity-80">
+                      {msg.reasoning_content}
+                    </div>
+                  </details>
+                )}
+                
                 <div className="msg-prose prose prose-sm md:prose-base dark:prose-invert max-w-none prose-p:leading-relaxed prose-pre:p-0">
-                  {msg.streaming && msg.content === '...' ? (
-                    <div className="flex flex-col gap-2 w-48 py-1">
+                  {msg.streaming && !msg.content && !msg.reasoning_content ? (
+                    <div className="flex flex-col gap-2 w-48 py-1 mt-2">
                       <div className="h-2 bg-gray-200 dark:bg-slate-700 rounded-full w-full animate-pulse"></div>
                       <div className="h-2 bg-gray-200 dark:bg-slate-700 rounded-full w-5/6 animate-pulse" style={{ animationDelay: '150ms' }}></div>
                       <div className="h-2 bg-gray-200 dark:bg-slate-700 rounded-full w-4/6 animate-pulse" style={{ animationDelay: '300ms' }}></div>

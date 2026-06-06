@@ -12,6 +12,7 @@ export interface Message {
   model?: string;
   auto_model?: string;
   auto_model_reason?: string;
+  reasoning_content?: string;
   metadata?: {
     model: string;
     provider: string;
@@ -159,11 +160,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       await streamChat(params, (event) => {
         if (event.type === 'status') {
           set({ workflowState: event.value, workflowStage: event.value });
-        } else if (event.type === 'token') {
+        } else if (event.type === 'token' || event.type === 'answer') {
+          const text = event.value || event.content || '';
           set((s) => {
             const updatedMsgs = s.messages.map(m => {
               if (m.id === msgId) {
-                return { ...m, content: m.content + event.value };
+                return { ...m, content: m.content + text };
+              }
+              return m;
+            });
+            return { messages: updatedMsgs };
+          });
+        } else if (event.type === 'reasoning') {
+          set((s) => {
+            const updatedMsgs = s.messages.map(m => {
+              if (m.id === msgId) {
+                const currentReasoning = m.reasoning_content || '';
+                return { ...m, reasoning_content: currentReasoning + (event.content || '') };
               }
               return m;
             });

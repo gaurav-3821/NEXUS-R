@@ -11,6 +11,7 @@ from modules.cognition_router.src.research_engine import PipelineContext
 from modules.cognition_router.src.query_router import QueryRouter
 from modules.cognition_router.src.golden_memory import GoldenMemory
 from modules.cognition_router.src.planner_critic import PlannerSkill, CriticSkill
+from modules.cognition_router.src.vision_processor import VisionProcessor
 
 logger = logging.getLogger("nexus-r.chat")
 
@@ -71,12 +72,14 @@ class ChatHandler:
         router,
         ws_handler=None,
         perms=None,
+        vision_processor: VisionProcessor | None = None,
     ) -> None:
         self.event_store = event_store
         self.cost_tracker = cost_tracker
         self.router = router
         self.ws_handler = ws_handler
         self.perms = perms
+        self.vision_processor = vision_processor or VisionProcessor()
         
         # Phase 3 Personalization Modules
         from modules.input_gateway.src.memory_parser import MemoryParser
@@ -590,6 +593,13 @@ When you output a `browser_action`, the system will execute it on the page, chec
         try:
             routing = await self.router.route(intent)
             preferred = model or routing.selected_model
+            
+            native_reasoning_models = ["o1", "o3", "deepseek-reasoner", "claude-3-7-sonnet"]
+            is_native_reasoning = any(nm in (preferred or "").lower() for nm in native_reasoning_models)
+            if not is_native_reasoning:
+                reasoning_instruction = "You must reason step-by-step. Enclose your internal reasoning process inside <thinking> tags. Once your thinking is complete, output your final response outside the tags."
+                intent.normalized_input += f"\n\n[SYSTEM INSTRUCTION]\n{reasoning_instruction}"
+                
         except RuntimeError as e:
             if "exhausted" in str(e).lower() or "probe failed" in str(e).lower():
                 from fastapi import HTTPException
@@ -647,65 +657,70 @@ When you output a `browser_action`, the system will execute it on the page, chec
 
         self._last_user_query = message
 
-        # 4.5 Eye of the Blind: Vision Fallback
-        if intent.images and not self.router.registry.is_vision_model(preferred):
-            vision_fallback = "qwen2.5-vl:7b"
-            
-            try:
-                await self._ensure_ollama_model(vision_fallback, msg_id, conversation_id)
-            except RuntimeError as e:
-                err_msg = str(e)
-                msg_id = str(uuid4())
-                ts = datetime.now(timezone.utc).isoformat()
-                return {
-                    "message_id": msg_id,
-                    "conversation_id": conversation_id,
-                    "content": err_msg,
-                    "role": "assistant",
-                    "model": "system",
-                    "cost": 0.0,
-                    "latency_ms": 1.0,
-                    "timestamp": ts,
-                    "blocked": True,
-                }, None, None, msg_id, ts, "system", conversation_id
-            
-            from litellm import acompletion
-            vision_prompt = "Please describe this image in detail, specifically focusing on information that would help answer the following user query: " + intent.raw_input
-            
-            msg_content = [{"type": "text", "text": vision_prompt}]
-            for img in intent.images:
-                msg_content.append({"type": "image_url", "image_url": {"url": img}})
-                
-            try:
-                if self.ws_handler:
-                    await self.ws_handler.broadcast({
-                        "type": "chat_message_sent",
-                        "message_id": "sys_vision_" + str(uuid4()),
+        # 4.5 Eye of the Blind: Vision Fallback (Ollama-based VLM for text-only models)
+        if intent.images:
+            openrouter_models = getattr(self.router.registry, '_openrouter_models', None)
+            is_vlm = await self.vision_processor.is_native_vlm(preferred, openrouter_models)
+            if is_vlm:
+                pass  # native VLM — images stay in intent.images, passed directly to OpenRouter/API
+            else:
+                vision_fallback = "qwen2.5-vl:7b"
+
+                try:
+                    await self._ensure_ollama_model(vision_fallback, msg_id, conversation_id)
+                except RuntimeError as e:
+                    err_msg = str(e)
+                    msg_id = str(uuid4())
+                    ts = datetime.now(timezone.utc).isoformat()
+                    return {
+                        "message_id": msg_id,
                         "conversation_id": conversation_id,
-                        "content": "Running Eye of the Blind vision fallback...",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "status": "processing",
-                        "streaming": True,
-                    })
-                if stream_callback:
-                    import json
-                    await stream_callback(f"data: {json.dumps({'type': 'status', 'value': 'analyzing image'})}\n\n")
-                    
-                vision_res = await acompletion(
-                    model="ollama/" + vision_fallback,
-                    messages=[{"role": "user", "content": msg_content}],
-                    api_base="http://127.0.0.1:11434"
-                )
-                vision_desc = vision_res.choices[0].message.content
-                
-                desc_block = f"\n\n[SYSTEM BACKGROUND ACTION: Image visually analyzed by {vision_fallback}]\n[IMAGE DESCRIPTION]\n{vision_desc}\n[END IMAGE DESCRIPTION]\n"
-                intent.normalized_input += desc_block
-                intent.images = None
-                
-            except Exception as e:
-                logger.error(f"Vision fallback failed: {e}")
-                intent.normalized_input += "\n\n[SYSTEM BACKGROUND ACTION: Vision fallback failed to describe the image.]"
-                intent.images = None
+                        "content": err_msg,
+                        "role": "assistant",
+                        "model": "system",
+                        "cost": 0.0,
+                        "latency_ms": 1.0,
+                        "timestamp": ts,
+                        "blocked": True,
+                    }, None, None, msg_id, ts, "system", conversation_id
+
+                from litellm import acompletion
+                vision_prompt = "Please describe this image in detail, specifically focusing on information that would help answer the following user query: " + intent.raw_input
+
+                msg_content = [{"type": "text", "text": vision_prompt}]
+                for img in intent.images:
+                    msg_content.append({"type": "image_url", "image_url": {"url": img}})
+
+                try:
+                    if self.ws_handler:
+                        await self.ws_handler.broadcast({
+                            "type": "chat_message_sent",
+                            "message_id": "sys_vision_" + str(uuid4()),
+                            "conversation_id": conversation_id,
+                            "content": "Running Eye of the Blind vision fallback...",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "status": "processing",
+                            "streaming": True,
+                        })
+                    if stream_callback:
+                        import json
+                        await stream_callback(f"data: {json.dumps({'type': 'status', 'value': 'analyzing image'})}\n\n")
+
+                    vision_res = await acompletion(
+                        model="ollama/" + vision_fallback,
+                        messages=[{"role": "user", "content": msg_content}],
+                        api_base="http://127.0.0.1:11434"
+                    )
+                    vision_desc = vision_res.choices[0].message.content
+
+                    desc_block = f"\n\n[SYSTEM BACKGROUND ACTION: Image visually analyzed by {vision_fallback}]\n[IMAGE DESCRIPTION]\n{vision_desc}\n[END IMAGE DESCRIPTION]\n"
+                    intent.normalized_input += desc_block
+                    intent.images = None
+
+                except Exception as e:
+                    logger.error(f"Vision fallback failed: {e}")
+                    intent.normalized_input += "\n\n[SYSTEM BACKGROUND ACTION: Vision fallback failed to describe the image.]"
+                    intent.images = None
 
         return None, intent, routing, msg_id, ts, preferred, conversation_id
 
@@ -852,16 +867,107 @@ When you output a `browser_action`, the system will execute it on the page, chec
         
         started = datetime.now(timezone.utc)
         full_text = ""
+        reasoning_text = ""
         reasoning_tokens: int | None = None
+        
+        # State: 'waiting' (before any <thinking> tag), 'reasoning', 'answering'
+        reasoning_state = "waiting"
+        reasoning_start_time: float | None = None
+        tag_buffer = ""  # Buffer to handle tags split across chunks
+        
+        def _strip_thinking_tags(s: str) -> str:
+            return s.replace("<thinking>", "").replace("</thinking>", "").replace("<think>", "").replace("</think>", "")
+        
         try:
             async for chunk in self.router.stream(intent, preferred):
                 text = chunk.get("text", "")
-                if text:
-                    full_text += text
-                    yield f"data: {json.dumps({'type': 'token', 'value': text})}\n\n"
                 rt = chunk.get("reasoning_tokens")
                 if rt is not None:
                     reasoning_tokens = rt
+                    
+                if not text:
+                    if chunk.get("done"):
+                        break
+                    continue
+                
+                # Buffer partial tags: if previous chunk ended mid-tag, prepend
+                if tag_buffer:
+                    text = tag_buffer + text
+                    tag_buffer = ""
+                
+                # Check if chunk ends with a partial tag opener/closer
+                for partial in ("<", "<t", "<th", "<thi", "<thin", "<think", "<thinki", "<thinkin", "<thinking",
+                                "</", "</t", "</th", "</thi", "</thin", "</think", "</thinki", "</thinkin", "</thinking"):
+                    if text.endswith(partial):
+                        tag_buffer = partial
+                        text = text[:-len(partial)]
+                        break
+                
+                if not text:
+                    if chunk.get("done"):
+                        # Flush buffer as-is
+                        if tag_buffer:
+                            full_text += tag_buffer
+                            if reasoning_state == "reasoning":
+                                yield f"data: {json.dumps({'type': 'reasoning', 'content': tag_buffer})}\n\n"
+                            else:
+                                yield f"data: {json.dumps({'type': 'answer', 'content': tag_buffer})}\n\n"
+                            tag_buffer = ""
+                        break
+                    continue
+                
+                full_text += text
+                
+                # Detect state transitions
+                if reasoning_state == "waiting":
+                    if "<thinking>" in text or "<think>" in text:
+                        reasoning_state = "reasoning"
+                        reasoning_start_time = asyncio.get_running_loop().time()
+                        clean = _strip_thinking_tags(text)
+                        if clean:
+                            reasoning_text += clean
+                            yield f"data: {json.dumps({'type': 'reasoning', 'content': clean})}\n\n"
+                    else:
+                        # Model didn't output thinking tags — treat as answer
+                        reasoning_state = "answering"
+                        yield f"data: {json.dumps({'type': 'answer', 'content': text})}\n\n"
+                        
+                elif reasoning_state == "reasoning":
+                    # Check 15s timeout
+                    if reasoning_start_time and (asyncio.get_running_loop().time() - reasoning_start_time > 15):
+                        reasoning_state = "answering"
+                        yield f"data: {json.dumps({'type': 'status', 'value': 'generating'})}\n\n"
+                        # Don't break — just switch to answer mode for remaining tokens
+                        clean = _strip_thinking_tags(text)
+                        if clean:
+                            yield f"data: {json.dumps({'type': 'answer', 'content': clean})}\n\n"
+                    elif "</thinking>" in text or "</think>" in text:
+                        reasoning_state = "answering"
+                        # Split: content before close tag is reasoning, after is answer
+                        for close_tag in ("</thinking>", "</think>"):
+                            if close_tag in text:
+                                parts = text.split(close_tag, 1)
+                                before = _strip_thinking_tags(parts[0])
+                                after = parts[1] if len(parts) > 1 else ""
+                                if before:
+                                    reasoning_text += before
+                                    yield f"data: {json.dumps({'type': 'reasoning', 'content': before})}\n\n"
+                                yield f"data: {json.dumps({'type': 'status', 'value': 'generating'})}\n\n"
+                                if after:
+                                    yield f"data: {json.dumps({'type': 'answer', 'content': after})}\n\n"
+                                break
+                    else:
+                        clean = _strip_thinking_tags(text)
+                        if clean:
+                            reasoning_text += clean
+                            yield f"data: {json.dumps({'type': 'reasoning', 'content': clean})}\n\n"
+                            
+                else:  # answering
+                    yield f"data: {json.dumps({'type': 'answer', 'content': text})}\n\n"
+                
+                if chunk.get("done"):
+                    break
+
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'value': str(e)})}\n\n"
             return
@@ -1124,64 +1230,142 @@ When you output a `browser_action`, the system will execute it on the page, chec
                     })
 
                 token_count = 0
-                in_think_block = False
+                # State: 'waiting' (before <thinking>), 'reasoning', 'answering'
+                ws_reasoning_state = "waiting"
+                ws_reasoning_start: float | None = None
+                
+                def _ws_strip_tags(s: str) -> str:
+                    return s.replace("<thinking>", "").replace("</thinking>", "").replace("<think>", "").replace("</think>", "")
+                
                 async for chunk in self.router.stream(intent, preferred):
                     text = chunk.get("text", "")
                     token_count += 1
                     
-                    if "<think>" in text:
-                        in_think_block = True
-                        text = text.replace("<think>", "")
-                        if self.ws_handler:
-                            await self.ws_handler.broadcast({
-                                "type": "chat_status",
-                                "message_id": msg_id,
-                                "conversation_id": conversation_id,
-                                "state": "reasoning",
-                                "stage": "thinking",
-                            })
-
-                    if "</think>" in text:
-                        in_think_block = False
-                        text = text.replace("</think>", "")
-                        if self.ws_handler:
-                            await self.ws_handler.broadcast({
-                                "type": "chat_status",
-                                "message_id": msg_id,
-                                "conversation_id": conversation_id,
-                                "state": "generating",
-                                "stage": "generating",
-                            })
-
-                    if in_think_block and text:
-                        if self.ws_handler:
-                            await self.ws_handler.broadcast({
-                                "type": "chat_status",
-                                "message_id": msg_id,
-                                "conversation_id": conversation_id,
-                                "state": "reasoning",
-                                "stage": "thinking",
-                                "reasoning_chunk": text
-                            })
-                        continue
-
                     if text:
-                        chunks.append(text)
+                        # Strip tags for the clean text that goes to chunks (used for browser action matching, storage)
+                        clean_text = _ws_strip_tags(text)
+                        if clean_text:
+                            chunks.append(clean_text)
+                        
+                        # Determine reasoning state transitions
+                        if ws_reasoning_state == "waiting":
+                            if "<thinking>" in text or "<think>" in text:
+                                ws_reasoning_state = "reasoning"
+                                ws_reasoning_start = asyncio.get_running_loop().time()
+                                if self.ws_handler:
+                                    await self.ws_handler.broadcast({
+                                        "type": "chat_status",
+                                        "message_id": msg_id,
+                                        "conversation_id": conversation_id,
+                                        "state": "reasoning",
+                                        "stage": "thinking",
+                                    })
+                                if clean_text and self.ws_handler:
+                                    await self.ws_handler.broadcast({
+                                        "type": "chat_status",
+                                        "message_id": msg_id,
+                                        "conversation_id": conversation_id,
+                                        "state": "reasoning",
+                                        "stage": "thinking",
+                                        "reasoning_chunk": clean_text,
+                                    })
+                            else:
+                                # No thinking tags — treat as answer immediately
+                                ws_reasoning_state = "answering"
+                                if clean_text and self.ws_handler:
+                                    await self.ws_handler.broadcast({
+                                        "type": "chat_chunk",
+                                        "message_id": msg_id,
+                                        "conversation_id": conversation_id,
+                                        "text": clean_text,
+                                        "model_name": chunk.get("model_name", preferred),
+                                        "done": chunk.get("done", False),
+                                    })
+                                    
+                        elif ws_reasoning_state == "reasoning":
+                            # Check 15s timeout
+                            if ws_reasoning_start and (asyncio.get_running_loop().time() - ws_reasoning_start > 15):
+                                ws_reasoning_state = "answering"
+                                if self.ws_handler:
+                                    await self.ws_handler.broadcast({
+                                        "type": "chat_status",
+                                        "message_id": msg_id,
+                                        "conversation_id": conversation_id,
+                                        "state": "generating",
+                                        "stage": "generating",
+                                    })
+                                if clean_text and self.ws_handler:
+                                    await self.ws_handler.broadcast({
+                                        "type": "chat_chunk",
+                                        "message_id": msg_id,
+                                        "conversation_id": conversation_id,
+                                        "text": clean_text,
+                                        "model_name": chunk.get("model_name", preferred),
+                                        "done": chunk.get("done", False),
+                                    })
+                            elif "</thinking>" in text or "</think>" in text:
+                                ws_reasoning_state = "answering"
+                                # Send any remaining reasoning content before the close tag
+                                for close_tag in ("</thinking>", "</think>"):
+                                    if close_tag in text:
+                                        parts = text.split(close_tag, 1)
+                                        before = _ws_strip_tags(parts[0])
+                                        after = _ws_strip_tags(parts[1]) if len(parts) > 1 else ""
+                                        if before and self.ws_handler:
+                                            await self.ws_handler.broadcast({
+                                                "type": "chat_status",
+                                                "message_id": msg_id,
+                                                "conversation_id": conversation_id,
+                                                "state": "reasoning",
+                                                "stage": "thinking",
+                                                "reasoning_chunk": before,
+                                            })
+                                        if self.ws_handler:
+                                            await self.ws_handler.broadcast({
+                                                "type": "chat_status",
+                                                "message_id": msg_id,
+                                                "conversation_id": conversation_id,
+                                                "state": "generating",
+                                                "stage": "generating",
+                                            })
+                                        if after and self.ws_handler:
+                                            await self.ws_handler.broadcast({
+                                                "type": "chat_chunk",
+                                                "message_id": msg_id,
+                                                "conversation_id": conversation_id,
+                                                "text": after,
+                                                "model_name": chunk.get("model_name", preferred),
+                                                "done": chunk.get("done", False),
+                                            })
+                                        break
+                            else:
+                                # Still reasoning — emit reasoning chunk
+                                if clean_text and self.ws_handler:
+                                    await self.ws_handler.broadcast({
+                                        "type": "chat_status",
+                                        "message_id": msg_id,
+                                        "conversation_id": conversation_id,
+                                        "state": "reasoning",
+                                        "stage": "thinking",
+                                        "reasoning_chunk": clean_text,
+                                    })
+                                    
+                        else:  # answering
+                            if clean_text and self.ws_handler:
+                                await self.ws_handler.broadcast({
+                                    "type": "chat_chunk",
+                                    "message_id": msg_id,
+                                    "conversation_id": conversation_id,
+                                    "text": clean_text,
+                                    "model_name": chunk.get("model_name", preferred),
+                                    "done": chunk.get("done", False),
+                                })
                     
-                    # Emit metrics live during generation
+                    # Emit metrics live during generation (always, not skipped by reasoning)
                     elapsed = (datetime.now(timezone.utc) - started).total_seconds()
                     speed = f"{token_count / elapsed:.1f} tok/s" if elapsed > 0 else "0 tok/s"
                     
                     if self.ws_handler and text:
-                        await self.ws_handler.broadcast({
-                            "type": "chat_chunk",
-                            "message_id": msg_id,
-                            "conversation_id": conversation_id,
-                            "text": text,
-                            "model_name": chunk.get("model_name", preferred),
-                            "done": chunk.get("done", False),
-                        })
-                        
                         if token_count % 5 == 0:  # throttling metrics to avoid flooding ws
                             mem = _cached_virtual_memory()
                             mem_usage = f"{mem.used / (1024**3):.1f} GB / {mem.total / (1024**3):.1f} GB"

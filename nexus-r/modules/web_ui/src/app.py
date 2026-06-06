@@ -561,6 +561,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         from modules.trust_layer.src.cost_tracker import CostTracker
         from modules.trust_layer.src.permission_enforcer import PermissionEnforcer
         from modules.trust_layer.src.secret_registry import SecretRegistry
+        from modules.cognition_router.src.vision_processor import VisionProcessor
         from nexus_r.config import NEXUSConfig
 
         cfg = config or NEXUSConfig.from_env(os.getcwd())
@@ -588,6 +589,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             router=router,
             ws_handler=_ws_handler,
             perms=permission_enforcer,
+            vision_processor=VisionProcessor(),
         )
 
     if cfg is None:

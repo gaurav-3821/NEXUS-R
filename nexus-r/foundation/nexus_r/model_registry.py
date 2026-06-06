@@ -186,8 +186,16 @@ class ModelRegistry:
             raise RuntimeError("Local provider is not available. Please start Ollama or configure a model.")
         return self.local
 
-    def is_vision_model(self, model_name: str) -> bool:
-        """Check if a model name indicates vision capabilities."""
+    def is_vision_model(self, model_name: str, modality: str | None = None) -> bool:
+        """Check if a model name indicates vision capabilities.
+
+        Args:
+            model_name: The model identifier string.
+            modality: Optional OpenRouter modality string (e.g. "text+image->text").
+                      Takes priority over keyword matching when provided.
+        """
+        if modality == "text+image->text":
+            return True
         if not model_name:
             return False
         name = model_name.lower()
@@ -851,11 +859,16 @@ class ModelRegistry:
                 api_key="ollama",
                 messages=messages,
             )
-        api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
-        if not api_key:
+        KNOWN_LITELLM_PREFIXES = ("groq/", "openai/", "anthropic/", "google/", "ollama/")
+        openrouter_key = self.secret_registry.get_secret("openrouter_api_key") or os.environ.get("NEXUS_OPENROUTER_API_KEY")
+        is_openrouter_candidate = not provider.name.startswith(KNOWN_LITELLM_PREFIXES)
+        
+        api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name) if self.config.models.byok_secret_name else None
+        
+        if not api_key and not (is_openrouter_candidate and openrouter_key):
+            secret_name = self.config.models.byok_secret_name or "API key"
             raise ProviderAuthError(
-                f"Groq API key not found: set NEXUS_BYOK_API_KEY environment variable "
-                f"or configure keyring secret '{self.config.models.byok_secret_name}'",
+                f"API key not found for {provider.name}: configure keyring secret '{secret_name}' or 'openrouter_api_key'",
                 provider=provider.name, tier=provider.provider_kind,
                 failure_class="missing_credentials", retryable=False,
                 fallback_decision="skip_chain_if_exhausted",
@@ -863,6 +876,16 @@ class ModelRegistry:
             
         logger.info(f"Requested Model: {provider.name} | Actual Model: {provider.name}")
         
+        if is_openrouter_candidate and openrouter_key:
+            return await self._litellm_completion(
+                provider=provider,
+                prompt=prompt,
+                fallback_used=fallback_used,
+                api_key=openrouter_key,
+                api_base="https://openrouter.ai/api/v1",
+                messages=messages,
+            )
+            
         return await self._litellm_completion(
             provider=provider,
             prompt=prompt,
@@ -881,10 +904,16 @@ class ModelRegistry:
     ) -> AsyncIterator[ModelStreamChunk]:
 
         if provider.provider_kind != "local":
-            api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
-            if not api_key:
+            KNOWN_LITELLM_PREFIXES = ("groq/", "openai/", "anthropic/", "google/", "ollama/")
+            openrouter_key = self.secret_registry.get_secret("openrouter_api_key") or os.environ.get("NEXUS_OPENROUTER_API_KEY")
+            is_openrouter_candidate = not provider.name.startswith(KNOWN_LITELLM_PREFIXES)
+            
+            api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name) if self.config.models.byok_secret_name else None
+            
+            if not api_key and not (is_openrouter_candidate and openrouter_key):
+                secret_name = self.config.models.byok_secret_name or "API key"
                 raise ProviderAuthError(
-                    f"API key not found: configure keyring secret '{self.config.models.byok_secret_name}'",
+                    f"API key not found for {provider.name}: configure keyring secret '{secret_name}' or 'openrouter_api_key'",
                     provider=provider.name, tier=provider.provider_kind,
                     failure_class="missing_credentials", retryable=False,
                     fallback_decision="skip_chain_if_exhausted",
@@ -914,9 +943,7 @@ class ModelRegistry:
             # Route bare model names through OpenRouter if its API key exists.
             # This handles model IDs like "moonshotai/kimi-k2.6:free" selected from
             # the chat dropdown regardless of which provider is "default" in settings.
-            KNOWN_LITELLM_PREFIXES = ("groq/", "openai/", "anthropic/", "google/", "ollama/")
-            openrouter_key = self.secret_registry.get_secret("openrouter_api_key") or os.environ.get("NEXUS_OPENROUTER_API_KEY")
-            if openrouter_key and not provider.name.startswith(KNOWN_LITELLM_PREFIXES):
+            if openrouter_key and is_openrouter_candidate:
                 async for chunk in self._openrouter_stream(
                     provider=provider,
                     api_key=openrouter_key,

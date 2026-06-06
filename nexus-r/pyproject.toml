@@ -25,6 +25,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 runtime = ["keyring>=25.0", "litellm>=1.0", "sentence-transformers>=2.2.0"]
+vision = ["pillow>=10.0"]
 
 [project.scripts]
 nexus = "modules.cli.src.main:main"
