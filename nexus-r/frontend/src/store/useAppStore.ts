@@ -68,11 +68,7 @@ interface AppState {
 export const useAppStore = create<AppState>((set, get) => ({
   currentConversationId: null,
   conversations: [],
-  messages: [{
-    id: 'welcome',
-    role: 'assistant',
-    content: 'Select a conversation or start a new chat.'
-  }],
+  messages: [],
   attachedImages: [],
   streamingMsgId: null,
   isMonitorOpen: false,
@@ -278,7 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   startNewChat: () => {
     set({
       currentConversationId: null,
-      messages: [{ id: 'welcome', role: 'assistant', content: 'Select a conversation or start a new chat.' }],
+      messages: [],
       streamingMsgId: null,
       workflowState: 'idle',
       workflowStage: 'Ready',
