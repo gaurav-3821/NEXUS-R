@@ -6,11 +6,9 @@ import { useAppearanceStore } from '../../store/appearanceStore';
 export interface ChatLayoutProps {
   children: React.ReactNode;
   inputArea: React.ReactNode;
-  showUpgradeBadge?: boolean;
-  onUpgradeClick?: () => void;
 }
 
-export function ChatLayout({ children, inputArea, showUpgradeBadge = true, onUpgradeClick }: ChatLayoutProps) {
+export function ChatLayout({ children, inputArea }: ChatLayoutProps) {
   const { compactMode } = useAppearanceStore();
 
   return (
