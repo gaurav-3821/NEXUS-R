@@ -15,6 +15,14 @@ export default function ChatInput() {
   const { sendChatMessage, interruptChat, streamingMsgId, attachedImages } = useAppStore();
   const { loadModels, openrouterModels, pinnedCloudModels, togglePinnedModel, listOpenRouter, routingProfile } = useModelsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const autoResize = () => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 128) + 'px';
+  };
 
   useEffect(() => {
     loadModels();
@@ -52,6 +60,7 @@ export default function ChatInput() {
       const modelToSend = selectedModel === 'Auto Router' ? undefined : selectedModel;
       sendChatMessage(input, modelToSend);
       setInput('');
+      if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
     }
   };
 
@@ -71,7 +80,7 @@ export default function ChatInput() {
   return (
     <div className="flex flex-col mx-auto w-full max-w-4xl px-4 pb-8 relative z-20">
       {/* Input Container */}
-      <div className="relative flex items-center gap-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-full p-2 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:ring-2 focus-within:ring-accent-500/20 focus-within:border-accent-300 transition-all">
+      <div className="relative flex items-end gap-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-2 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:ring-2 focus-within:ring-accent-500/20 focus-within:border-accent-300 transition-all">
         
         {/* Attachment Button */}
         <button 
@@ -89,8 +98,9 @@ export default function ChatInput() {
 
         {/* Text Area */}
         <textarea
+          ref={textareaRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => { setInput(e.target.value); autoResize(); }}
           onKeyDown={handleKeyDown}
           placeholder="What's in your mind?..."
           className="flex-1 max-h-32 bg-transparent resize-none outline-none py-3 px-2 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"

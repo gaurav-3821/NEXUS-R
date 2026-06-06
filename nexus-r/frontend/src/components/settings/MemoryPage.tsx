@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { getMemories, clearAllMemories } from '../../api/memory';
-import type { Memory, MemoryStats } from '../../api/memory';
+import { useMemoryStore } from '../../store/memoryStore';
 import { SettingsLayout } from '../layout/SettingsLayout';
 import { PageHeader } from '../ui/PageHeader';
 import { SearchBar } from '../ui/SearchBar';
@@ -9,43 +8,38 @@ import { SettingsNavigation } from './ui/SettingsNavigation';
 import { SettingsCard } from './ui/SettingsCard';
 import { ToggleRow } from './ui/ToggleRow';
 import { ActionRow } from './ui/ActionRow';
-import { ComingSoonBadge } from '../ui/ComingSoonBadge';
+import { MemoryExplorerModal } from './MemoryExplorerModal';
 import { 
   Settings, Box, Key, Palette, Wrench, Database, Shield, Zap, Code, Link, CloudOff, Info, 
-  RefreshCw, Trash2, DatabaseBackup, Activity, Search, Server, Clock, MessageSquare, CheckCircle2, ChevronRight
+  RefreshCw, Trash2, DatabaseBackup, Activity, Search, Server, Clock, MessageSquare, CheckCircle2, ChevronRight, Brain
 } from 'lucide-react';
 
 export default function MemoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = location.pathname.split('/').pop() || 'memory';
-  const [stats, setStats] = useState<MemoryStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  const fetchMemory = async () => {
-    setIsLoading(true);
-    try {
-      const res = await getMemories();
-      setStats(res.stats);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const { stats, detailStats, loadMemories, loadDetailStats, clearAll, rebuild, optimize, setPersistent, setSmart, persistentEnabled, smartEnabled, isLoading } = useMemoryStore();
+  const [showExplorer, setShowExplorer] = useState(false);
 
   useEffect(() => {
-    fetchMemory();
-  }, []);
+    loadMemories();
+    loadDetailStats();
+  }, [loadMemories, loadDetailStats]);
 
-  const handleClear = async () => {
-    try {
-      await clearAllMemories();
-      await fetchMemory();
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  const handleClear = async () => { await clearAll(); };
+  const handleRebuild = async () => { await rebuild(); };
+  const handleOptimize = async () => { await optimize(); };
+
+  const totalMem = detailStats?.total_memories || 0;
+  const cats = detailStats?.categories || {};
+  const semantic = cats.semantic || 0;
+  const golden = cats.golden || 0;
+  const nonZeroTotal = Math.max(totalMem, 1);
+  const semanticPct = Math.round((semantic / nonZeroTotal) * 100);
+  const goldenPct = Math.round((golden / nonZeroTotal) * 100);
+  const persistentPct = totalMem > 0 && persistentEnabled ? Math.max(10, 100 - semanticPct - goldenPct - 5) : 0;
+  const smartPct = totalMem > 0 && smartEnabled ? 5 : 0;
+  const otherPct = Math.max(0, 100 - semanticPct - goldenPct - persistentPct - smartPct);
 
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={18} /> },
@@ -91,28 +85,36 @@ export default function MemoryPage() {
           <div className="relative w-16 h-16">
             <svg viewBox="0 0 36 36" className="w-full h-full rotate-[-90deg]">
               <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-100 dark:stroke-slate-700" strokeWidth="4"></circle>
-              <circle cx="18" cy="18" r="16" fill="none" className="stroke-blue-600 dark:stroke-blue-400" strokeWidth="4" strokeDasharray="42 100" strokeDashoffset="0"></circle>
-              <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500 dark:stroke-emerald-400" strokeWidth="4" strokeDasharray="25 100" strokeDashoffset="-42"></circle>
-              <circle cx="18" cy="18" r="16" fill="none" className="stroke-orange-500 dark:stroke-orange-400" strokeWidth="4" strokeDasharray="18 100" strokeDashoffset="-67"></circle>
-              <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="4" strokeDasharray="15 100" strokeDashoffset="-85"></circle>
+              {semanticPct > 0 && (
+                <circle cx="18" cy="18" r="16" fill="none" className="stroke-blue-600 dark:stroke-blue-400" strokeWidth="4" strokeDasharray={`${semanticPct} 100`} strokeDashoffset="0"></circle>
+              )}
+              {goldenPct > 0 && (
+                <circle cx="18" cy="18" r="16" fill="none" className="stroke-emerald-500 dark:stroke-emerald-400" strokeWidth="4" strokeDasharray={`${goldenPct} 100`} strokeDashoffset={`-${semanticPct}`}></circle>
+              )}
+              {persistentPct > 0 && (
+                <circle cx="18" cy="18" r="16" fill="none" className="stroke-orange-500 dark:stroke-orange-400" strokeWidth="4" strokeDasharray={`${persistentPct} 100`} strokeDashoffset={`-${semanticPct + goldenPct}`}></circle>
+              )}
+              {otherPct > 0 && (
+                <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="4" strokeDasharray={`${otherPct} 100`} strokeDashoffset={`-${semanticPct + goldenPct + persistentPct}`}></circle>
+              )}
             </svg>
           </div>
           <div className="flex-1 space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></div> User Preferences</div>
-              <span className="text-gray-900 dark:text-gray-100">42%</span>
+              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400"></div> Semantic Memory</div>
+              <span className="text-gray-900 dark:text-gray-100">{semanticPct}%</span>
             </div>
             <div className="flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"></div> Project Context</div>
-              <span className="text-gray-900 dark:text-gray-100">25%</span>
+              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400"></div> Golden Memory</div>
+              <span className="text-gray-900 dark:text-gray-100">{goldenPct}%</span>
             </div>
             <div className="flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-orange-500 dark:bg-orange-400"></div> Facts & Notes</div>
-              <span className="text-gray-900 dark:text-gray-100">18%</span>
+              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-orange-500 dark:bg-orange-400"></div> Persistent Memory</div>
+              <span className="text-gray-900 dark:text-gray-100">{persistentPct}%</span>
             </div>
             <div className="flex items-center justify-between text-xs font-semibold">
               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></div> Others</div>
-              <span className="text-gray-900 dark:text-gray-100">15%</span>
+              <span className="text-gray-900 dark:text-gray-100">{otherPct}%</span>
             </div>
           </div>
         </div>
@@ -122,7 +124,15 @@ export default function MemoryPage() {
         <div className="space-y-3 mb-4">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600 dark:text-gray-400 font-medium">Total Memories</span>
-            <span className="font-semibold text-gray-900 dark:text-gray-100">{stats?.total_memories || 0}</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">{totalMem}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400 font-medium">Semantic</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">{semantic}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-600 dark:text-gray-400 font-medium">Golden</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">{golden}</span>
           </div>
         </div>
       </SettingsCard>
@@ -132,13 +142,13 @@ export default function MemoryPage() {
           <button onClick={handleClear} className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors text-left">
             <Trash2 size={16} /> Clear All Memories
           </button>
-          <button className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-3 transition-colors text-left">
+          <button onClick={handleRebuild} className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-3 transition-colors text-left">
             <RefreshCw size={16} className="text-accent-500" /> Rebuild Memory Index
           </button>
-          <button className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-3 transition-colors text-left">
+          <button onClick={handleOptimize} className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-3 transition-colors text-left">
             <Activity size={16} className="text-emerald-500 dark:text-emerald-400" /> Optimize Memory
           </button>
-          <button className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-3 transition-colors text-left">
+          <button onClick={() => setShowExplorer(true)} className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-slate-800 flex items-center gap-3 transition-colors text-left">
             <Search size={16} className="text-blue-500 dark:text-blue-400" /> View Memory Explorer
           </button>
         </div>
@@ -184,6 +194,7 @@ export default function MemoryPage() {
       footer={footer}
       isOverlay={false}
     >
+      {showExplorer && <MemoryExplorerModal onClose={() => setShowExplorer(false)} />}
       <div className="animate-in fade-in slide-in-from-bottom-2 h-full flex flex-col w-full">
         
         <div className="flex items-center justify-between mb-8">
@@ -219,7 +230,7 @@ export default function MemoryPage() {
                 <DatabaseBackup size={14} />
               </div>
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Total Memories</p>
-              <h4 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">{isLoading ? '...' : (stats?.total_memories || 0)}</h4>
+              <h4 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">{isLoading ? '...' : totalMem}</h4>
             </div>
             
             <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl p-4 shadow-sm dark:shadow-black/10">
@@ -227,7 +238,7 @@ export default function MemoryPage() {
                 <Server size={14} />
               </div>
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Memory Size</p>
-              <h4 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">{isLoading ? '...' : `${((stats?.total_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB`}</h4>
+              <h4 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-1">{isLoading ? '...' : `${((detailStats?.total_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB`}</h4>
             </div>
 
             <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl p-4 shadow-sm dark:shadow-black/10">
@@ -274,7 +285,7 @@ export default function MemoryPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                <ComingSoonBadge /> <ChevronRight size={14} className="text-gray-400 dark:text-gray-500" />
+                <span className="text-emerald-600 dark:text-emerald-400">{persistentEnabled ? 'Active' : 'Disabled'}</span> <ChevronRight size={14} className="text-gray-400 dark:text-gray-500" />
               </div>
             </div>
           </div>
@@ -300,11 +311,20 @@ export default function MemoryPage() {
               className="border-b border-gray-100 dark:border-slate-800 last:border-0"
             />
             
-            <ActionRow 
+            <ToggleRow 
+              label="Persistent Memory" 
+              description="Retain golden examples and key information across sessions and restarts." 
+              checked={persistentEnabled} 
+              onChange={async (val) => { await setPersistent(val); }} 
+              className="border-b border-gray-100 dark:border-slate-800 last:border-0"
+            />
+
+            <ToggleRow 
               label="Smart Memory" 
-              description="Use AI to determine what to remember and what to forget." 
-              action={<ComingSoonBadge />} 
-              className="border-b border-gray-100 dark:border-slate-800 last:border-0 bg-gray-50/50 dark:bg-slate-800/50"
+              description="Use AI to determine what to remember and what to forget based on relevance." 
+              checked={smartEnabled} 
+              onChange={async (val) => { await setSmart(val); }} 
+              className="border-b border-gray-100 dark:border-slate-800 last:border-0"
             />
 
             <ActionRow 
@@ -316,7 +336,6 @@ export default function MemoryPage() {
                   <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors text-sm font-semibold text-gray-700 dark:text-gray-300 shadow-sm">
                     <RefreshCw size={14} /> Sync Now
                   </button>
-                  <ComingSoonBadge />
                 </div>
               }
               className="border-b border-gray-100 dark:border-slate-800 last:border-0 bg-gray-50/50 dark:bg-slate-800/50"
@@ -331,7 +350,7 @@ export default function MemoryPage() {
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-2">1.37 GB available</p>
               </div>
               <div className="flex flex-col items-end gap-2 shrink-0">
-                <span className="text-[13px] font-bold text-gray-900 dark:text-gray-100">{((stats?.total_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB <span className="text-gray-400 dark:text-gray-500 font-medium">/ 1.5 GB</span></span>
+                <span className="text-[13px] font-bold text-gray-900 dark:text-gray-100">{((detailStats?.total_size_bytes || 0) / 1024 / 1024).toFixed(2)} MB <span className="text-gray-400 dark:text-gray-500 font-medium">/ 1.5 GB</span></span>
                 <button className="px-4 py-2 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded-lg text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors shadow-sm">
                   Manage Storage
                 </button>

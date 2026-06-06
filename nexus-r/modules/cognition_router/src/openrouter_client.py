@@ -26,17 +26,21 @@ class OpenRouterClient:
                         prompt_price = -1.0
                         completion_price = -1.0
                         
-                    # Only add the model if it is completely free
-                    if prompt_price == 0.0 and completion_price == 0.0:
-                        results.append({
-                            "id": item.get("id"),
-                            "name": item.get("name"),
-                            "created": item.get("created"),
-                            "description": (item.get("description") or "")[:300],
-                            "pricing": pricing,
-                            "context_length": item.get("context_length"),
-                            "architecture": item.get("architecture", {}).get("modality", "text"),
-                        })
+                    # Add the model with an is_free flag
+                    is_free = (prompt_price == 0.0 and completion_price == 0.0)
+                    results.append({
+                        "id": item.get("id"),
+                        "name": item.get("name"),
+                        "created": item.get("created"),
+                        "description": (item.get("description") or "")[:300],
+                        "pricing": pricing,
+                        "context_length": item.get("context_length"),
+                        "architecture": item.get("architecture", {}).get("modality", "text"),
+                        "is_free": is_free
+                    })
+                    
+                # Sort: free models first, then paid models
+                results.sort(key=lambda m: (not m["is_free"], m["name"] or m["id"]))
                 return results
         except Exception as e:
             logger.error("Failed to fetch OpenRouter models: %s", e)

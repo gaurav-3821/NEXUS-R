@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from nexus_r.config import NEXUSConfig
-from nexus_r.events import IntentResult, RoutingDecision
+from nexus_r.events import IntentResult, PermissionTier, RoutingDecision
 from nexus_r.model_registry import ModelRegistry, ModelInvocationResult
 from nexus_r.telemetry import RuntimeTelemetry
 
@@ -74,7 +74,7 @@ class CognitionRouter:
 
         return RoutingDecision(
             selected_model=route.model_name,
-            selected_tier=intent_result.suggested_tier,
+            selected_tier=list(PermissionTier)[route.tier_index],
             cost_estimate=route.cost_estimate,
             rationale=route.rationale,
             etd_match_found=False,
@@ -93,8 +93,9 @@ class CognitionRouter:
 
     async def complete(self, intent_result: IntentResult, preferred: str) -> dict[str, object]:
         invocation = await self.models.complete(
-            prompt=intent_result.parameters.get("prompt", intent_result.normalized_input),
+            prompt=intent_result.normalized_input,
             preferred=preferred,
+            messages=intent_result.messages,
         )
         return {
             "text": invocation.text,
@@ -107,8 +108,9 @@ class CognitionRouter:
 
     async def stream(self, intent_result: IntentResult, preferred: str):
         async for chunk in self.models.stream(
-            prompt=intent_result.parameters.get("prompt", intent_result.normalized_input),
+            prompt=intent_result.normalized_input,
             preferred=preferred,
+            messages=intent_result.messages,
         ):
             yield {
                 "text": chunk.text,

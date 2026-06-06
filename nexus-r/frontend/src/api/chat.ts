@@ -5,6 +5,9 @@ export interface ChatRequestParams {
   model?: string;
   conversation_id?: string;
   images?: string[];
+  mode?: string;
+  search_enabled?: boolean;
+  search_sources?: string[];
 }
 
 export interface Conversation {

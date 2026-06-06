@@ -36,6 +36,9 @@ interface AppState {
   streamingMsgId: string | null;
   isMonitorOpen: boolean;
   isSidebarOpen: boolean;
+  optimizationMode: 'speed' | 'balanced' | 'quality';
+  searchEnabled: boolean;
+  searchSources: string[];
   
   // Dev Monitor Metrics
   workflowState: string;
@@ -54,6 +57,9 @@ interface AppState {
   setStreamingMsgId: (id: string | null) => void;
   toggleMonitor: () => void;
   toggleSidebar: () => void;
+  setOptimizationMode: (mode: 'speed' | 'balanced' | 'quality') => void;
+  setSearchEnabled: (enabled: boolean) => void;
+  setSearchSources: (sources: string[]) => void;
   
   // Domain actions
   sendChatMessage: (content: string, model?: string) => Promise<void>;
@@ -73,6 +79,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   streamingMsgId: null,
   isMonitorOpen: false,
   isSidebarOpen: true,
+  optimizationMode: 'balanced',
+  searchEnabled: false,
+  searchSources: ['web'],
   
   workflowState: 'idle',
   workflowStage: 'Ready',
@@ -92,6 +101,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   setStreamingMsgId: (id) => set({ streamingMsgId: id }),
   toggleMonitor: () => set((state) => ({ isMonitorOpen: !state.isMonitorOpen })),
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
+  setOptimizationMode: (mode) => set({ optimizationMode: mode }),
+  setSearchEnabled: (enabled) => set({ searchEnabled: enabled }),
+  setSearchSources: (sources) => set({ searchSources: sources }),
 
   sendChatMessage: async (content: string, model?: string) => {
     const state = get();
@@ -124,6 +136,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (state.currentConversationId) params.conversation_id = state.currentConversationId;
       if (state.attachedImages.length > 0) params.images = state.attachedImages;
       if (model) params.model = model;
+      if (state.optimizationMode !== 'balanced') params.mode = state.optimizationMode;
+      if (state.searchEnabled) params.search_enabled = true;
+      if (state.searchEnabled && state.searchSources.length > 0) params.search_sources = state.searchSources;
       
       set({ attachedImages: [] });
 

@@ -10,8 +10,11 @@ class PlaywrightProvider(SearchProvider):
 
     async def search(self, query, categories=None, site=None, limit=10) -> SearchResponse:
         full_query = f"{query} site:{site}" if site else query
+        if categories:
+            category_filter = " ".join(categories)
+            full_query = f"{full_query} {category_filter}"
         raw = await self.browser.search_web(full_query)
-        results = raw.get("results", [])
+        results = raw.get("results", []) if raw else []
         return SearchResponse(
             results=[
                 SearchResult(
@@ -28,9 +31,13 @@ class PlaywrightProvider(SearchProvider):
 
     async def extract(self, url: str) -> str:
         """Fetch full page content from a URL. Used by ResearchEngine for deep extraction."""
+        import asyncio
         nav = await self.browser.goto(url)
         if nav.get("success"):
-            return await self.browser.extract_text(max_chars=4000)
+            try:
+                return await asyncio.wait_for(self.browser.extract_text(max_chars=4000), timeout=15.0)
+            except asyncio.TimeoutError:
+                return ""
         return ""
 
     async def health(self) -> bool:

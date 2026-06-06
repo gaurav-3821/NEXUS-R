@@ -1171,20 +1171,35 @@ class ModelManager:
             self.router.models = mr
             self.router._tier_executor = _TierExecutor(mr)
 
-            local_model = self.config.models.local_model
-            CAR_TIERS[0]["model"] = local_model
+            # Load routing profile first so tiers can use per-category models
+            saved = self.load_saved_config()
+            routing_profile = saved.get("routingProfile") or {}
 
-            name_no_prefix = local_model.replace("ollama/", "").replace("lmstudio/", "")
-            parts = name_no_prefix.split(":")
-            base_name = parts[0]
+            fast_model = routing_profile.get("general") or self.config.models.local_model
+            strong_model = routing_profile.get("reasoning") or routing_profile.get("coding") or self.config.models.local_model
+
+            local_model = self.config.models.local_model
+
+            # T0 = fast/cheap model for simple queries
+            CAR_TIERS[0]["model"] = fast_model
+
+            # T1/T2 = strong model for complex reasoning/coding
             available = mr._get_available_models()
-            for i, suffix in enumerate(["7b", "70b"], start=1):
+            for i in (1, 2):
                 if i < len(CAR_TIERS):
-                    candidate = f"{base_name}:{suffix}" if ":" in name_no_prefix else f"{base_name}-{suffix}"
-                    if any(candidate in m for m in available):
-                        CAR_TIERS[i]["model"] = candidate
+                    if any(strong_model in m for m in available):
+                        CAR_TIERS[i]["model"] = strong_model
                     else:
-                        CAR_TIERS[i]["model"] = local_model
+                        # Fallback: try size-suffixed name, then local_model
+                        name_no_prefix = local_model.replace("ollama/", "").replace("lmstudio/", "")
+                        parts = name_no_prefix.split(":")
+                        base_name = parts[0]
+                        suffix = "70b" if i == 2 else "7b"
+                        candidate = f"{base_name}:{suffix}" if ":" in name_no_prefix else f"{base_name}-{suffix}"
+                        if any(candidate in m for m in available):
+                            CAR_TIERS[i]["model"] = candidate
+                        else:
+                            CAR_TIERS[i]["model"] = local_model
 
             byok_model = self.config.models.byok_model
             if byok_model:
@@ -1194,9 +1209,7 @@ class ModelManager:
                 CAR_TIERS[3]["kind"] = "local"
                 CAR_TIERS[3]["model"] = local_model
 
-            # Apply routing profile if saved
-            saved = self.load_saved_config()
-            routing_profile = saved.get("routingProfile")
+            # Apply routing profile to semantic categories
             if routing_profile:
                 if routing_profile.get("reasoning"):
                     mr._semantic_categories["math_reasoning"]["default_model"] = routing_profile["reasoning"]
@@ -1206,7 +1219,9 @@ class ModelManager:
                     mr._semantic_categories["creative"]["default_model"] = routing_profile["general"]
                     mr._semantic_categories["conversational"]["default_model"] = routing_profile["general"]
 
-            logger.info("CAR hot-reloaded: local=%s, byok=%s", local_model, self.config.models.byok_model or "none")
+            logger.info("CAR hot-reloaded: tiers=[%s, %s, %s], byok=%s",
+                        CAR_TIERS[0]["model"], CAR_TIERS[1]["model"], CAR_TIERS[2]["model"],
+                        self.config.models.byok_model or "none")
         except Exception as exc:
             logger.error("CAR hot-reload failed: %s", exc, exc_info=True)
 

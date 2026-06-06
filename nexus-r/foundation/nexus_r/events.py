@@ -73,6 +73,7 @@ class IntentResult(BaseModel):
     parameters: dict[str, Any]
     suggested_tier: PermissionTier
     warnings: list[str] = Field(default_factory=list)
+    messages: list[dict[str, Any]] | None = None
 
 
 class RoutingDecision(BaseModel):
@@ -346,6 +347,18 @@ class EventStore:
 
     async def get_by_type(self, event_type: str) -> list[Event]:
         return await self.query({"event_type": event_type})
+
+    async def get_recent_by_type(self, event_type: str, limit: int = 50) -> list[Event]:
+        await self.initialize()
+        assert self._read_db is not None
+        safe_limit = max(limit, 1)
+        async with self._read_lock:
+            async with self._read_db.execute(
+                "SELECT * FROM events WHERE event_type = ? ORDER BY timestamp DESC LIMIT ?",
+                (event_type, safe_limit),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [self._row_to_event(row) for row in rows]
 
     async def create_projected_view(self, name: str, query: str) -> None:
         await self.initialize()

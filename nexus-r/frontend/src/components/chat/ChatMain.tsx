@@ -2,6 +2,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { APP_NAME } from '../../constants';
 import { RefreshCw, Sparkles, Bot } from 'lucide-react';
 import ChatInput from './ChatInput';
+import ChatToolbar from './ChatToolbar';
 import clsx from 'clsx';
 import { useAppearanceStore } from '../../store/appearanceStore';
 import ReactMarkdown from 'react-markdown';
@@ -91,8 +92,11 @@ export default function ChatMain() {
         </div>
       </div>
 
-      {/* Input Area */}
-      <div className="shrink-0 w-full relative pt-2">
+      {/* Toolbar + Input Area */}
+      <div className="shrink-0 w-full relative">
+        <div className="max-w-4xl mx-auto px-4">
+          <ChatToolbar />
+        </div>
         <ChatInput />
       </div>
     </div>

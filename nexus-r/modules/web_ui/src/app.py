@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends, WebSocket, Backgro
 from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nexus_r.events import Event, PermissionTier
 
@@ -59,10 +59,34 @@ class ChatRequest(BaseModel):
     search_enabled: bool = False
     search_sources: list[str] = Field(default_factory=lambda: ["web"])
 
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        if v not in ("speed", "balanced", "quality"):
+            raise ValueError('mode must be "speed", "balanced", or "quality"')
+        return v
+
+    @field_validator("search_sources")
+    @classmethod
+    def validate_search_sources(cls, v: list[str]) -> list[str]:
+        allowed = {"web", "news", "academic", "social"}
+        for s in v:
+            if s not in allowed:
+                raise ValueError(f"Invalid search source: {s}. Allowed: {', '.join(sorted(allowed))}")
+        return v
+
 class HITLResumeRequest(BaseModel):
     message_id: str
     code: str | None = None
     solved: bool = False
+
+class TruncateRequest(BaseModel):
+    message_id: str
+    keep_inclusive: bool = True
+
+class SuggestionRequest(BaseModel):
+    prefix: str = Field(..., min_length=1, max_length=200)
+    limit: int = Field(5, ge=1, le=20)
 
 class TelemetryBatch(BaseModel):
     signals: list[dict[str, Any]]
@@ -651,6 +675,57 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             return {"success": True, "count": count}
         return {"success": False}
 
+    @app.post("/api/v1/memory/rebuild")
+    async def rebuild_memories(token: str = Query("")):
+        _check_auth(token)
+        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
+            rebuilt = await _chat_handler.memory_engine.rebuild_index()
+            return {"success": True, "rebuilt": rebuilt}
+        return {"success": False, "rebuilt": 0}
+
+    @app.post("/api/v1/memory/optimize")
+    async def optimize_memories(token: str = Query("")):
+        _check_auth(token)
+        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
+            result = await _chat_handler.memory_engine.optimize()
+            return {"success": True, **result}
+        return {"success": False, "pruned": 0, "remaining": 0}
+
+    @app.post("/api/v1/memory/persistent/toggle")
+    async def toggle_persistent_memory(token: str = Query(""), enabled: bool = Query(True)):
+        _check_auth(token)
+        if _chat_handler and hasattr(_chat_handler, "golden_memory"):
+            _chat_handler._persistent_memory_enabled = enabled
+            return {"success": True, "enabled": enabled}
+        return {"success": False, "enabled": False}
+
+    @app.post("/api/v1/memory/smart/toggle")
+    async def toggle_smart_memory(token: str = Query(""), enabled: bool = Query(True)):
+        _check_auth(token)
+        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
+            _chat_handler._smart_memory_enabled = enabled
+            return {"success": True, "enabled": enabled}
+        return {"success": False, "enabled": False}
+
+    @app.get("/api/v1/memory/stats")
+    async def get_memory_stats(token: str = Query("")):
+        _check_auth(token)
+        if not _chat_handler:
+            return {"total_memories": 0, "total_size_bytes": 0, "categories": {}}
+        stats = {"total_memories": 0, "total_size_bytes": 0, "categories": {}}
+        if hasattr(_chat_handler, "memory_engine"):
+            eng_stats = await _chat_handler.memory_engine.get_stats()
+            stats["total_memories"] = eng_stats.get("total_memories", 0)
+            stats["total_size_bytes"] = eng_stats.get("total_size_bytes", 0)
+            stats["categories"]["semantic"] = eng_stats.get("total_memories", 0)
+        if hasattr(_chat_handler, "golden_memory"):
+            gm_stats = _chat_handler.golden_memory.get_stats() if hasattr(_chat_handler.golden_memory, "get_stats") else {}
+            stats["categories"]["golden"] = gm_stats.get("count", 0)
+            stats["total_memories"] += gm_stats.get("count", 0)
+        stats["categories"]["persistent"] = 1 if getattr(_chat_handler, "_persistent_memory_enabled", True) else 0
+        stats["categories"]["smart"] = 1 if getattr(_chat_handler, "_smart_memory_enabled", True) else 0
+        return stats
+
     @app.get("/api/v1/cost/summary")
     async def get_summary(token: str = Query("")):
         _check_auth(token)
@@ -827,6 +902,28 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         )
         return {"success": success}
 
+    @app.post("/api/v1/chat/suggestions")
+    async def chat_suggestions(
+        request: SuggestionRequest,
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        _check_rate_limit("suggestions")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        normalized = _chat_handler.validate_suggestion(request.prefix, request.limit)
+        try:
+            suggestions = await asyncio.wait_for(
+                _chat_handler.suggestion_registry.suggest(
+                    prefix=normalized,
+                    limit=request.limit,
+                ),
+                timeout=3.0,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Suggestion service timed out")
+        return {"suggestions": suggestions}
+
     from fastapi import UploadFile, File
     from .file_parser import extract_file_content
     @app.post("/api/v1/files/extract")
@@ -874,6 +971,17 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             conversation_id=conversation_id, limit=limit, offset=offset
         )
         return {"messages": results}
+
+    @app.post("/api/v1/chat/conversations/{conversation_id}/truncate")
+    async def chat_truncate_conversation(conversation_id: str, request: TruncateRequest, token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("truncate_conversation")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.truncate_conversation(conversation_id, request.message_id, request.keep_inclusive)
+        if not success:
+            raise HTTPException(status_code=404, detail="Message not found")
+        return {"success": success}
 
     @app.delete("/api/v1/chat/conversations/{conversation_id}")
     async def chat_delete_conversation(conversation_id: str, token: str = Query("")):
@@ -1375,6 +1483,131 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                 }
             ]
         }
+
+    # --- Browser Tools API ---
+    @app.get("/api/v1/tools/browser/status")
+    async def browser_status(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            return {"started": False, "headless": True, "current_url": None}
+        b = _chat_handler.browser
+        started = b._page is not None
+        url = b._page.url if started else None
+        return {
+            "started": started,
+            "headless": b.headless,
+            "current_url": url,
+        }
+
+    @app.post("/api/v1/tools/browser/start")
+    async def browser_start(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            await _chat_handler.browser.start()
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/v1/tools/browser/stop")
+    async def browser_stop(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            await _chat_handler.browser.stop()
+            return {"success": True}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/v1/tools/browser/page-text")
+    async def browser_page_text(token: str = Query(""), max_chars: int = Query(4000, le=20000)):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            text = await _chat_handler.browser.extract_text(max_chars=max_chars)
+            return {"success": True, "text": text}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/v1/tools/browser/screenshot")
+    async def browser_screenshot(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            img_bytes = await _chat_handler.browser.screenshot()
+            if img_bytes is None:
+                raise HTTPException(status_code=500, detail="Screenshot failed")
+            import base64
+            return {"success": True, "image_base64": base64.b64encode(img_bytes).decode("utf-8")}
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/v1/tools/browser/switch-headed")
+    async def browser_switch_headed(token: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            result = await _chat_handler.browser.switch_to_headed()
+            return {"success": result}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/v1/tools/browser/save-session")
+    async def browser_save_session(token: str = Query(""), path: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            file_path = path or os.path.join(os.path.dirname(__file__), "browser_session.json")
+            result = await _chat_handler.browser.save_session_state(file_path)
+            return {"success": result, "path": file_path}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/v1/tools/browser/load-session")
+    async def browser_load_session(token: str = Query(""), path: str = Query("")):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            file_path = path or os.path.join(os.path.dirname(__file__), "browser_session.json")
+            result = await _chat_handler.browser.load_session_state(file_path)
+            return {"success": result is not None}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/v1/tools/browser/network-data")
+    async def browser_network_data(token: str = Query(""), max_entries: int = Query(20, le=50)):
+        _check_auth(token)
+        _check_rate_limit("tools")
+        if _chat_handler is None or not hasattr(_chat_handler, "browser"):
+            raise HTTPException(status_code=503, detail="Chat handler not initialized")
+        try:
+            data = _chat_handler.browser.read_network_data(max_entries=max_entries)
+            return {"success": True, "entries": data, "count": len(data)}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/{full_path:path}")
+    async def catch_all(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("static/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        return HTMLResponse(content=index_html(), status_code=200)
 
     return app
 

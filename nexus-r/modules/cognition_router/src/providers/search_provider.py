@@ -24,3 +24,7 @@ class SearchProvider(ABC):
     @abstractmethod
     async def health(self) -> bool:
         ...
+
+    @abstractmethod
+    async def extract(self, url: str) -> str:
+        ...

@@ -8,7 +8,7 @@ import os
 import shutil
 import time
 from time import perf_counter
-from typing import AsyncIterator, Protocol
+from typing import Any, AsyncIterator, Protocol
 
 import httpx
 
@@ -220,13 +220,15 @@ class ModelRegistry:
         deduped: list[StaticModelProvider] = []
         seen: set[str] = set()
         for provider in chain:
+            if not provider.name or not str(provider.name).strip():
+                continue
             key = f"{provider.provider_kind}:{provider.name}:{provider.uses_mock}"
             if provider.available() and key not in seen:
                 deduped.append(provider)
                 seen.add(key)
         return deduped
 
-    async def complete(self, prompt: str, preferred: str, images: list[str] | None = None) -> ModelInvocationResult:
+    async def complete(self, prompt: str, preferred: str, images: list[str] | None = None, messages: list[dict[str, Any]] | None = None) -> ModelInvocationResult:
         chain = self.provider_chain(preferred)
         if not chain:
             raise RuntimeError("No models are available to serve the request. Please configure a cloud API key or start local Ollama.")
@@ -250,6 +252,7 @@ class ModelRegistry:
                     prompt=prompt,
                     fallback_used=is_fallback,
                     images=images,
+                    messages=messages,
                 )
                 for f in failures:
                     self._log_provider_failure(*f)
@@ -272,7 +275,7 @@ class ModelRegistry:
             self._log_provider_failure(*f)
         raise self._build_chain_exhausted_error(last_error, preferred)
 
-    async def stream(self, prompt: str, preferred: str, images: list[str] | None = None) -> AsyncIterator[ModelStreamChunk]:
+    async def stream(self, prompt: str, preferred: str, images: list[str] | None = None, messages: list[dict[str, Any]] | None = None) -> AsyncIterator[ModelStreamChunk]:
         chain = self.provider_chain(preferred)
         if not chain:
             raise RuntimeError("No models are available to serve the request. Please configure a cloud API key or start local Ollama.")
@@ -300,6 +303,7 @@ class ModelRegistry:
                     prompt=prompt,
                     fallback_used=is_fallback,
                     images=images,
+                    messages=messages,
                 ):
                     yield chunk
                 return
@@ -460,6 +464,7 @@ class ModelRegistry:
         prompt: str,
         fallback_used: bool,
         images: list[str] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> ModelInvocationResult:
         started = perf_counter()
         self._queued_requests += 1
@@ -478,7 +483,7 @@ class ModelRegistry:
                             uses_mock=provider.uses_mock,
                             fallback_used=fallback_used,
                         )
-                    result = await self._invoke(provider, prompt, fallback_used, images=images)
+                    result = await self._invoke(provider, prompt, fallback_used, images=images, messages=messages)
                     if self.telemetry is not None:
                         self.telemetry.increment("provider.success_total", provider=provider.name)
                         self.telemetry.emit(
@@ -506,6 +511,7 @@ class ModelRegistry:
         prompt: str,
         fallback_used: bool,
         images: list[str] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[ModelStreamChunk]:
         self._queued_requests += 1
         self._emit_queue_metrics()
@@ -523,7 +529,7 @@ class ModelRegistry:
                             uses_mock=provider.uses_mock,
                             fallback_used=fallback_used,
                         )
-                    async for chunk in self._invoke_stream(provider, prompt, fallback_used, images=images):
+                    async for chunk in self._invoke_stream(provider, prompt, fallback_used, images=images, messages=messages):
                         if self.telemetry is not None and chunk.text:
                             self.telemetry.increment(
                                 "provider.stream_chunks_total",
@@ -638,11 +644,16 @@ class ModelRegistry:
         if self._local_ready_cache is not None and (now - self._local_ready_cache_time) < 60.0:
             return self._local_ready_cache
         
-        # Check if the model exists in the available tags
         try:
             available = self._get_available_models()
             clean_name = model_name.replace("ollama/", "")
-            self._local_ready_cache = any(clean_name in m for m in available)
+            exact_match = any(clean_name in m for m in available)
+            if exact_match:
+                self._local_ready_cache = True
+            else:
+                # No exact match — still mark ready if any local model is running
+                # (invoke will pick the best available model dynamically)
+                self._local_ready_cache = len(available) > 0
             self._local_ready_cache_time = now
         except Exception:
             self._local_ready_cache = False
@@ -798,6 +809,7 @@ class ModelRegistry:
         prompt: str,
         fallback_used: bool,
         images: list[str] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> ModelInvocationResult:
         if provider.uses_mock:
             return await self._mock_completion(provider, prompt, fallback_used)
@@ -815,7 +827,16 @@ class ModelRegistry:
                     provider.name = self.config.models.local_model
                 if not provider.name.startswith("ollama/"):
                     provider.name = f"ollama/{provider.name}"
-                self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
+                # If the configured model doesn't exist on this machine, fallback to first available
+                available_local = self._get_available_models()
+                clean = provider.name.replace("ollama/", "")
+                if available_local and not any(clean in m for m in available_local):
+                    fallback = available_local[0]
+                    logger.warning("Configured model %s not found, falling back to %s", clean, fallback)
+                    provider.name = f"ollama/{fallback}"
+                    self._last_model_reason = f"Fallback (configured {clean} not found) → {fallback}"
+                else:
+                    self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
             elif provider.provider_kind == "local":
                 if not provider.name.startswith("ollama/"):
                     provider.name = f"ollama/{provider.name}"
@@ -828,6 +849,7 @@ class ModelRegistry:
                 fallback_used=fallback_used,
                 api_base=api_base,
                 api_key="ollama",
+                messages=messages,
             )
         api_key = self.secret_registry.get_secret(self.config.models.byok_secret_name)
         if not api_key:
@@ -846,6 +868,7 @@ class ModelRegistry:
             prompt=prompt,
             fallback_used=fallback_used,
             api_key=api_key,
+            messages=messages,
         )
 
     async def _invoke_stream(
@@ -854,6 +877,7 @@ class ModelRegistry:
         prompt: str,
         fallback_used: bool,
         images: list[str] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> AsyncIterator[ModelStreamChunk]:
 
         if provider.provider_kind != "local":
@@ -868,11 +892,24 @@ class ModelRegistry:
             
             logger.info(f"Requested Model: {provider.name} | Actual Model: {provider.name}")
                 
-            msg_content = prompt
-            if images:
-                msg_content = [{"type": "text", "text": prompt}]
-                for img in images:
-                    msg_content.append({"type": "image_url", "image_url": {"url": img}})
+            if messages:
+                msgs = messages
+                if images:
+                    for i in range(len(msgs) - 1, -1, -1):
+                        if msgs[i].get("role") == "user":
+                            content = msgs[i].get("content", "")
+                            multi_content = [{"type": "text", "text": content}]
+                            for img in images:
+                                multi_content.append({"type": "image_url", "image_url": {"url": img}})
+                            msgs[i] = {"role": "user", "content": multi_content}
+                            break
+            else:
+                msg_content = prompt
+                if images:
+                    msg_content = [{"type": "text", "text": prompt}]
+                    for img in images:
+                        msg_content.append({"type": "image_url", "image_url": {"url": img}})
+                msgs = [{"role": "user", "content": msg_content}]
             
             # Route bare model names through OpenRouter if its API key exists.
             # This handles model IDs like "moonshotai/kimi-k2.6:free" selected from
@@ -884,7 +921,7 @@ class ModelRegistry:
                     provider=provider,
                     api_key=openrouter_key,
                     api_base="https://openrouter.ai/api/v1",
-                    messages=[{"role": "user", "content": msg_content}],
+                    messages=msgs,
                     fallback_used=fallback_used,
                 ):
                     yield chunk
@@ -898,7 +935,7 @@ class ModelRegistry:
             try:
                 response = await acompletion(
                     model=provider.name,
-                    messages=[{"role": "user", "content": msg_content}],
+                    messages=msgs,
                     api_key=api_key,
                     timeout=self.config.models.stream_timeout_seconds,
                     temperature=0,
@@ -930,6 +967,12 @@ class ModelRegistry:
                 provider.name = self.config.models.local_model
             if not provider.name.startswith("ollama/"):
                 provider.name = f"ollama/{provider.name}"
+            available_local = self._get_available_models()
+            clean = provider.name.replace("ollama/", "")
+            if available_local and not any(clean in m for m in available_local):
+                fallback = available_local[0]
+                logger.warning("Configured model %s not found in stream, falling back to %s", clean, fallback)
+                provider.name = f"ollama/{fallback}"
             self._last_model_reason = "Manual override active → locked to " + provider.name.replace("ollama/", "")
         elif provider.provider_kind == "local":
             if not provider.name.startswith("ollama/"):
@@ -947,9 +990,10 @@ class ModelRegistry:
         model_name = self._provider_model_name(provider.name)
         if model_name.endswith('.gguf'):
             model_name = model_name[:-5]
+        msgs_for_ollama = messages if messages else [{"role": "user", "content": prompt}]
         payload = {
             "model": model_name,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": msgs_for_ollama,
             "stream": True,
             "options": {"temperature": 0},
             "keep_alive": -1,
@@ -1068,6 +1112,7 @@ class ModelRegistry:
         api_key: str,
         api_base: str | None = None,
         images: list[str] | None = None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> ModelInvocationResult:
         from litellm import acompletion
         from litellm.exceptions import (
@@ -1078,15 +1123,28 @@ class ModelRegistry:
         )
 
         started = perf_counter()
-        msg_content = prompt
-        if images:
-            msg_content = [{"type": "text", "text": prompt}]
-            for img in images:
-                msg_content.append({"type": "image_url", "image_url": {"url": img}})
-                
+        if messages:
+            msgs = messages
+            if images:
+                for i in range(len(msgs) - 1, -1, -1):
+                    if msgs[i].get("role") == "user":
+                        content = msgs[i].get("content", "")
+                        multi_content = [{"type": "text", "text": content}]
+                        for img in images:
+                            multi_content.append({"type": "image_url", "image_url": {"url": img}})
+                        msgs[i] = {"role": "user", "content": multi_content}
+                        break
+        else:
+            msg_content = prompt
+            if images:
+                msg_content = [{"type": "text", "text": prompt}]
+                for img in images:
+                    msg_content.append({"type": "image_url", "image_url": {"url": img}})
+            msgs = [{"role": "user", "content": msg_content}]
+
         kwargs = {
             "model": provider.name,
-            "messages": [{"role": "user", "content": msg_content}],
+            "messages": msgs,
             "api_key": api_key,
             "api_base": api_base,
             "timeout": self.config.models.provider_timeout_seconds,

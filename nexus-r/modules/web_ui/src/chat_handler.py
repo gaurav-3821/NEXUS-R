@@ -7,6 +7,10 @@ from typing import Any
 from uuid import uuid4
 
 from nexus_r.events import Event, IntentResult, PermissionTier
+from modules.cognition_router.src.research_engine import PipelineContext
+from modules.cognition_router.src.query_router import QueryRouter
+from modules.cognition_router.src.golden_memory import GoldenMemory
+from modules.cognition_router.src.planner_critic import PlannerSkill, CriticSkill
 
 logger = logging.getLogger("nexus-r.chat")
 
@@ -110,9 +114,38 @@ class ChatHandler:
         self.search_registry.register(playwright_provider, role="extract")
         
         self.research_engine = ResearchEngine(self.search_registry)
-        
+
+        # ── Widget Registry ──────────────────────────────────────
+        from modules.cognition_router.src.providers.widget_registry import WidgetRegistry
+        from modules.cognition_router.src.providers.widgets.weather_widget import WeatherWidget
+        from modules.cognition_router.src.providers.widgets.calculator_widget import CalculatorWidget
+        from modules.cognition_router.src.providers.widgets.stock_widget import StockWidget
+        from modules.cognition_router.src.providers.widgets.citation_widget import CitationWidget
+        from modules.cognition_router.src.providers.widgets.router_decision_widget import RouterDecisionWidget
+        from modules.cognition_router.src.providers.widgets.model_status_widget import ModelStatusWidget
+        from modules.cognition_router.src.providers.widgets.memory_widget import MemoryWidget
+        from modules.cognition_router.src.providers.widgets.cost_analytics_widget import CostAnalyticsWidget
+        self.widget_registry = WidgetRegistry()
+        self.widget_registry.register(WeatherWidget())
+        self.widget_registry.register(CalculatorWidget(self.calculator))
+        self.widget_registry.register(StockWidget())
+        self.widget_registry.register(CitationWidget())
+        self.widget_registry.register(RouterDecisionWidget())
+        self.widget_registry.register(ModelStatusWidget())
+        self.widget_registry.register(MemoryWidget())
+        self.widget_registry.register(CostAnalyticsWidget())
+
+        # ── Hybrid Architecture: QueryRouter, GoldenMemory, Planner-Critic ──
+        workspace = os.environ.get("NEXUS_WORKSPACE_ROOT", os.getcwd())
+        self.query_router = QueryRouter()
+        self.golden_memory = GoldenMemory(f"{workspace}/.nexus-r/events.db")
+        self.planner = PlannerSkill()
+        self.critic = CriticSkill()
+
         self._active_tasks: dict[str, asyncio.Task] = {}
         self._paused_browsers: dict[str, Any] = {}
+        self._persistent_memory_enabled = True
+        self._smart_memory_enabled = True
 
 
     async def _prepare_intent(
@@ -364,32 +397,39 @@ class ChatHandler:
             except Exception as e:
                 logger.error(f"Error parsing forecasting intent: {e}")
 
+        # Save the clean user message BEFORE appending system context
+        # This is what the frontend will display in the user's chat bubble
+        user_display_message = message
+
         if action_desc:
             if "TimesFM" in action_desc:
-                message += f"\n\n[SYSTEM BACKGROUND ACTION: {action_desc}]\n[FORECAST CONTENT:]\n{extracted_text}\n[END FORECAST CONTENT]\nPlease present these forecasting results in a stunning, comprehensive report. Integrate an interactive tabbed UI artifact:\n- Tab 1: Forecast Visual (contains the box-drawing ASCII/Unicode visual chart within a code block, along with predictions table)\n- Tab 2: Statistical Analysis (includes average growth rates, historical volatility, and standard deviations)\n- Tab 3: Tactical Forecast Notes (interprets the trend direction and highlights any growth accelerations or anomalies)."
+                message += f"\n\n[SYSTEM BACKGROUND ACTION: {action_desc}]\n[FORECAST CONTENT:]\n{extracted_text}\n[END FORECAST CONTENT]\nPlease present these forecasting results. You MUST use the following exact JSON format inside a ```artifact code block to render a tabbed UI:\n```artifact\n{{\n  \"title\": \"TimesFM Forecast\",\n  \"type\": \"analysis\",\n  \"tabs\": [\n    {{ \"label\": \"Visual\", \"content\": \"markdown here\" }},\n    {{ \"label\": \"Stats\", \"content\": \"markdown here\" }}\n  ]\n}}\n```"
             else:
-                message += f"\n\n[SYSTEM BACKGROUND ACTION: {action_desc}]\n[WEB CONTENT:]\n{extracted_text}\n[END WEB CONTENT]\nPlease answer the user's prompt using the web content above. Do not output the raw content, just summarize or answer based on it."
+                message += f"\n\n[SYSTEM BACKGROUND ACTION: {action_desc}]\n[WEB CONTENT:]\n{extracted_text}\n[END WEB CONTENT]\nPlease answer the user's prompt using the web content above. If you want to show a stunning interactive HTML visualization (like a styled card or chart), you MUST put your full HTML code inside a ```html_artifact code block. Otherwise, just summarize normally."
+
 
         msg_id = str(uuid4())
         ts = datetime.now(timezone.utc).isoformat()
 
         # Fire-and-forget: don't block the response pipeline on event logging
+        # Store the CLEAN user message, not the LLM-enriched prompt
         asyncio.create_task(self.event_store.append(Event(
             event_type="chat_message_sent",
             data={
                 "message_id": msg_id,
                 "conversation_id": conversation_id,
-                "content": message,
+                "content": user_display_message,
                 "model": model or "",
                 "timestamp": ts,
             },
         )))
         if self.ws_handler:
+            # Broadcast the CLEAN user message to the frontend UI
             await self.ws_handler.broadcast({
                 "type": "chat_message_sent",
                 "message_id": msg_id,
                 "conversation_id": conversation_id,
-                "content": message,
+                "content": user_display_message,
                 "timestamp": ts,
             })
             
@@ -511,6 +551,21 @@ Or to wait for a specific element to be visible:
   "selector": ".payment-success"
 }
 ```
+Or to execute arbitrary JavaScript on the page (the result is returned to you):
+```browser_action
+{
+  "action": "evaluate",
+  "code": "document.querySelector('.price').innerText"
+}
+```
+Or to read captured API/JSON data from network requests made during the page visit:
+```browser_action
+{
+  "action": "read_network_data",
+  "max_entries": 10
+}
+```
+```
 
 When you output a `browser_action`, the system will execute it on the page, check for security walls (like CAPTCHA or MFA), take a screenshot, extract the updated visible page text, and feed it back to you. You can output ONE browser action per turn. Repeat this loop until your interactive workflow (login, trade, checkout, etc.) is fully completed.
 """
@@ -540,7 +595,58 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 from fastapi import HTTPException
                 raise HTTPException(status_code=503, detail="No AI models are currently available. Please start Ollama or configure an API key in the settings.")
             raise
-        
+
+        def _tier_index(tier) -> int:
+            if tier is None:
+                return -1
+            if isinstance(tier, int):
+                return tier
+            val = getattr(tier, "value", tier) if not isinstance(tier, (int, str)) else tier
+            if isinstance(val, int):
+                return val
+            s = str(val).lower().replace("t", "")
+            try:
+                return int(s)
+            except (ValueError, TypeError):
+                return -1
+
+        # ── Phase 1: QueryRouter — override tier based on complexity assessment ──
+        if model is None or model in ("Auto Router", "System Default"):
+            try:
+                has_local = hasattr(self.router, 'models') and self.router.models.local.is_available
+                has_cloud = hasattr(self.router, 'models') and self.router.models.byok.is_available
+                qr_result = await self.query_router.evaluate(intent.raw_input)
+                tier_val = _tier_index(routing.selected_tier if hasattr(routing, "selected_tier") else None)
+                if qr_result.route == "cloud" and has_cloud and tier_val < 3:
+                    logger.info("QueryRouter escalated to cloud: %s", qr_result.reason)
+                    routing.selected_tier = PermissionTier.T3
+                    routing.selected_model = "byok"
+                    routing.cost_estimate = 0.05
+                    preferred = "byok"
+                elif qr_result.route == "cloud" and not has_cloud:
+                    logger.info("QueryRouter wants cloud but no provider; staying local: %s", qr_result.reason)
+                elif qr_result.route == "local" and has_local and tier_val >= 3:
+                    logger.info("QueryRouter de-escalated to local: %s", qr_result.reason)
+                    routing.selected_tier = PermissionTier.T1
+                    routing.selected_model = "local"
+                    routing.cost_estimate = 0.001
+                    preferred = "local"
+            except Exception as qr_err:
+                logger.debug("QueryRouter evaluation skipped: %s", qr_err)
+
+        # ── Phase 2: GoldenMemory — inject few-shot examples from cloud history ──
+        tier_val = _tier_index(routing.selected_tier if hasattr(routing, "selected_tier") else None)
+        if tier_val < 3:
+            try:
+                few_shot = await self.golden_memory.format_few_shot(intent.raw_input, max_examples=2)
+                if few_shot:
+                    intent.normalized_input = f"{few_shot}\n\n{intent.normalized_input}"
+                    logger.debug("Injected %d golden examples into local model context", 2)
+            except Exception as gm_err:
+                logger.debug("GoldenMemory retrieval skipped: %s", gm_err)
+
+        self._last_user_query = message
+
         # 4.5 Eye of the Blind: Vision Fallback
         if intent.images and not self.router.registry.is_vision_model(preferred):
             vision_fallback = "qwen2.5-vl:7b"
@@ -603,6 +709,25 @@ When you output a `browser_action`, the system will execute it on the page, chec
 
         return None, intent, routing, msg_id, ts, preferred, conversation_id
 
+    async def _run_widgets(self, raw_input: str, research_result=None, router_decision=None):
+        """Build PipelineContext and run all registered widgets."""
+        memory_facts = []
+        try:
+            if not _is_trivial_message(raw_input):
+                facts = await self.memory_engine.recall(raw_input, top_k=10)
+                if facts:
+                    memory_facts = facts
+        except Exception:
+            pass
+        from modules.cognition_router.src.research_engine import PipelineContext
+        ctx = PipelineContext(
+            raw_input=raw_input,
+            research_result=research_result,
+            memory_facts=memory_facts,
+            router_decision=router_decision or {},
+        )
+        results = await self.widget_registry.execute_all(ctx)
+        return [{"type": r.widget_type, "data": r.data, "title": r.title} for r in results]
 
     async def send_message(
         self,
@@ -650,9 +775,19 @@ When you output a `browser_action`, the system will execute it on the page, chec
             }
         else:
             response = await self.router.complete(intent, preferred)
+            try:
+                route_name = routing.selected_tier.name if hasattr(routing.selected_tier, "name") else str(routing.selected_tier)
+                non_ws_widgets = await self._run_widgets(
+                    raw_input=message,
+                    research_result=research if search_enabled and mode != "speed" else None,
+                    router_decision={"model": preferred, "tier": route_name, "cost_estimate": routing.cost_estimate},
+                )
+            except Exception as wid_e:
+                logger.warning("Widget execution failed in non-WS path: %s", wid_e)
+                non_ws_widgets = []
             res = await self._finalize_response(
                 response, conversation_id, msg_id, preferred,
-                routing.selected_tier, started,
+                routing.selected_tier, started, widgets=non_ws_widgets,
             )
             
             tier_val = getattr(routing.selected_tier, "value", routing.selected_tier)
@@ -743,6 +878,18 @@ When you output a `browser_action`, the system will execute it on the page, chec
         }
         if reasoning_tokens is not None:
             metadata["reasoning_tokens"] = reasoning_tokens
+
+        try:
+            widgets = await self._run_widgets(
+                raw_input=message,
+                research_result=research if search_enabled and mode != "speed" else None,
+                router_decision={"model": preferred, "tier": route_name, "cost_estimate": routing.cost_estimate},
+            )
+            for w in widgets:
+                yield f"data: {json.dumps({'type': 'widget', 'widget_type': w['type'], 'data': w['data'], 'title': w['title']})}\n\n"
+        except Exception as wid_e:
+            logger.warning("Widget execution failed in SSE path: %s", wid_e, exc_info=True)
+            widgets = []
         
         yield f"data: {json.dumps({'type': 'done', 'message_id': msg_id, 'conversation_id': conversation_id, 'model': preferred, 'metadata': metadata})}\n\n"
         
@@ -752,6 +899,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
             "cost": routing.cost_estimate,
             "latency_ms": latency,
             "blocked": False,
+            "widgets": widgets,
         }, conversation_id, msg_id, ts)
 
         tier_val = getattr(routing.selected_tier, "value", routing.selected_tier)
@@ -898,14 +1046,55 @@ When you output a `browser_action`, the system will execute it on the page, chec
         import re
         import json
 
+        # ── Phase 3: Planner-Critic — generate and review plan for cloud/browser tasks ──
+        tier_val = getattr(routing.selected_tier, "value", 0) if hasattr(routing, "selected_tier") else 0
+        if tier_val >= 3 and active_tools:
+            try:
+                plan = await self.planner.plan(intent.raw_input, context=str(active_tools))
+                if plan:
+                    review = await self.critic.review(plan, intent.raw_input)
+                    if not review.approved and review.revised_plan:
+                        plan = review.revised_plan
+                    plan_prompt = self.planner.format_for_prompt(plan)
+                    intent.normalized_input = f"{plan_prompt}\n\n{intent.normalized_input}"
+                    if self.ws_handler:
+                        status = "approved" if review.approved else "revised"
+                        await self.ws_handler.broadcast({
+                            "type": "chat_status",
+                            "message_id": msg_id,
+                            "conversation_id": conversation_id,
+                            "state": "planning",
+                            "stage": f"Plan {status} ({plan.estimated_complexity}, {len(plan.steps)} steps)",
+                        })
+            except Exception as pc_err:
+                logger.debug("Planner-Critic skipped: %s", pc_err)
+
         step_limit = 6
         step_count = 0
         has_browser_action = True
-        
+        max_time_seconds = 60
+        loop_start_time = asyncio.get_running_loop().time()
+
         full_assistant_response = []
 
         try:
             while has_browser_action and step_count < step_limit:
+                # Max time guardrail
+                elapsed = asyncio.get_running_loop().time() - loop_start_time
+                if elapsed > max_time_seconds:
+                    logger.info("Browser action loop exceeded %ss, aborting", max_time_seconds)
+                    if self.ws_handler:
+                        await self.ws_handler.broadcast({
+                            "type": "chat_chunk",
+                            "message_id": msg_id,
+                            "conversation_id": conversation_id,
+                            "text": f"\n\n*⏱ Browser action time limit ({max_time_seconds}s) reached. Continuing with data gathered so far...*",
+                            "model_name": preferred,
+                            "done": False,
+                        })
+                    intent.normalized_input += f"\n\n[SYSTEM] Browser action loop exceeded {max_time_seconds}s time limit. Continuing with data gathered so far."
+                    break
+
                 step_count += 1
                 has_browser_action = False
                 chunks.clear()
@@ -1053,6 +1242,12 @@ When you output a `browser_action`, the system will execute it on the page, chec
                             action_result = await self.browser.type_text(action_data.get("selector"), action_data.get("text"))
                         elif action == "wait":
                             action_result = await self.browser.wait_for_element(action_data.get("selector"))
+                        elif action == "evaluate":
+                            action_result = await self.browser.evaluate(action_data.get("code", ""))
+                        elif action == "read_network_data":
+                            entries = action_data.get("max_entries", 20)
+                            data = self.browser.read_network_data(max_entries=entries)
+                            action_result = {"success": True, "data": data}
                         else:
                             action_result = {"success": False, "error": f"Unknown action: {action}"}
                             
@@ -1062,6 +1257,13 @@ When you output a `browser_action`, the system will execute it on the page, chec
                         # Capture updated visible text content and URL
                         updated_text = await self.browser.extract_text(max_chars=4000)
                         url = self.browser._page.url if self.browser._page else ""
+
+                        # Push scraped content into semantic memory
+                        if updated_text and len(updated_text) > 50:
+                            try:
+                                await self.memory_engine.extract_memories(updated_text, "")
+                            except Exception as mem_err:
+                                logger.warning("Failed to extract memories from browser content: %s", mem_err)
                         
                         result_msg = (
                             f"\n\n[SYSTEM ACTION RESULT]\n"
@@ -1142,6 +1344,16 @@ When you output a `browser_action`, the system will execute it on the page, chec
         cost = (routing.cost_estimate * step_count) if full_text else 0.0
         model_name = preferred
 
+        route_name = routing.selected_tier.name if hasattr(routing.selected_tier, "name") else str(routing.selected_tier)
+        try:
+            widgets = await self._run_widgets(
+                raw_input=intent.raw_input,
+                router_decision={"model": preferred, "tier": route_name, "cost_estimate": routing.cost_estimate},
+            )
+        except Exception as wid_e:
+            logger.warning("Widget execution failed in WS path: %s", wid_e)
+            widgets = []
+
         response_data = {
             "message_id": msg_id,
             "conversation_id": conversation_id,
@@ -1151,6 +1363,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
             "cost": cost,
             "latency_ms": round(elapsed, 2),
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "widgets": widgets,
         }
         await self._log_response(response_data, conversation_id, msg_id,
                                  response_data["timestamp"])
@@ -1162,7 +1375,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
 
     async def _finalize_response(self, response: dict, conversation_id: str,
                                  msg_id: str, model_name: str, tier,
-                                 started: datetime) -> dict[str, Any]:
+                                 started: datetime, widgets: list | None = None) -> dict[str, Any]:
         elapsed = (datetime.now(timezone.utc) - started).total_seconds() * 1000
         cost = float(response.get("cost", 0))
         full_text = response.get("text", "")
@@ -1175,6 +1388,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
             "cost": cost,
             "latency_ms": round(elapsed, 2),
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "widgets": widgets or [],
         }
         await self._log_response(response_data, conversation_id, msg_id,
                                  response_data["timestamp"])
@@ -1195,6 +1409,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 "latency_ms": response_data.get("latency_ms", 0),
                 "timestamp": ts,
                 "blocked": response_data.get("blocked", False),
+                "widgets": response_data.get("widgets", []),
             },
         ))
         await self.cost_tracker.record(
@@ -1203,6 +1418,24 @@ When you output a `browser_action`, the system will execute it on the page, chec
             model=str(response_data.get("model", "")),
             tier=PermissionTier.T2,
         )
+
+        # ── Phase 2: GoldenMemory store — capture cloud model successes ──
+        model_name = str(response_data.get("model", ""))
+        content = response_data.get("content", "")
+        blocked = response_data.get("blocked", False)
+        cost_val = float(response_data.get("cost", 0))
+        is_cloud = cost_val > 0.01 or any(kw in model_name.lower() for kw in ("byok", "groq", "openai", "anthropic", "google/"))
+        if not blocked and content and len(content) > 100 and (is_cloud or cost_val > 0.001):
+            asyncio.create_task(self.golden_memory.store(
+                query=getattr(self, "_last_user_query", ""),
+                reasoning_steps=content[:2000],
+                final_result=content[:500],
+                task_type="general",
+                model_used=model_name,
+                success_score=min(1.0, cost_val * 10) if cost_val > 0 else 0.5,
+                metadata={"latency_ms": response_data.get("latency_ms", 0)},
+            ))
+
         if self.ws_handler:
             await self.ws_handler.notify_cost_update(
                 task_id=msg_id,
@@ -1219,6 +1452,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 "latency_ms": response_data.get("latency_ms", 0),
                 "model": response_data.get("model", ""),
                 "timestamp": ts,
+                "widgets": response_data.get("widgets", []),
             })
 
     async def delete_conversation(self, conversation_id: str) -> bool:
@@ -1296,6 +1530,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 "latency_ms": float(event.data.get("latency_ms", 0)),
                 "timestamp": event.data.get("timestamp", ""),
                 "blocked": bool(event.data.get("blocked", False)),
+                "widgets": event.data.get("widgets", []),
             })
         all_msgs.sort(key=lambda m: m.get("timestamp", ""))
         return all_msgs[offset:offset + limit]

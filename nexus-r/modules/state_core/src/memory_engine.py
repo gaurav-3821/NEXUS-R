@@ -16,6 +16,7 @@ import logging
 import math
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -736,8 +737,28 @@ class SemanticMemoryEngine:
         ) as cursor:
             avg_conf = (await cursor.fetchone())["avg_conf"] or 0.0
 
+        async with self._db.execute(
+            "SELECT COALESCE(SUM(LENGTH(content)), 0) as total_bytes FROM semantic_memories"
+        ) as cursor:
+            total_bytes = (await cursor.fetchone())["total_bytes"]
+
+        async with self._db.execute(
+            "SELECT MIN(created_at) as oldest, MAX(created_at) as newest FROM semantic_memories"
+        ) as cursor:
+            row = await cursor.fetchone()
+            oldest_ts = row["oldest"] if row else None
+            newest_ts = row["newest"] if row else None
+
+        def _fmt_ts(ts: float | None) -> str | None:
+            if ts is None:
+                return None
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+
         return {
             "total_memories": total,
+            "total_size_bytes": total_bytes,
+            "oldest_memory_date": _fmt_ts(oldest_ts),
+            "newest_memory_date": _fmt_ts(newest_ts),
             "max_capacity": MAX_MEMORIES,
             "categories": categories,
             "sources": sources,
@@ -756,6 +777,48 @@ class SemanticMemoryEngine:
         await self._db.execute("DELETE FROM semantic_memories")
         await self._db.commit()
         return count
+
+    async def rebuild_index(self) -> int:
+        """Re-embed all stored memories via Ollama.
+        
+        Returns count of successfully re-embedded memories.
+        """
+        await self.initialize()
+        assert self._db is not None
+
+        async with self._db.execute(
+            "SELECT id, content FROM semantic_memories"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        rebuilt = 0
+        for row in rows:
+            embedding = await self._embed(row["content"])
+            await self._db.execute(
+                "UPDATE semantic_memories SET embedding_json = ? WHERE id = ?",
+                (json.dumps(embedding), row["id"]),
+            )
+            rebuilt += 1
+
+        if rebuilt:
+            await self._db.commit()
+            logger.info("Rebuilt embeddings for %d memories", rebuilt)
+        return rebuilt
+
+    async def optimize(self) -> dict[str, int]:
+        """Run both decay-and-prune and cache clear.
+        
+        Returns dict with counts of pruned and remaining memories.
+        """
+        pruned = await self.decay_and_prune()
+        self._embed_cache.clear()
+        self._embed_cache_order.clear()
+        self._injection_cache.clear()
+        stats = await self.get_stats()
+        return {
+            "pruned": pruned,
+            "remaining": stats["total_memories"],
+        }
 
     async def decay_and_prune(self, min_effective_confidence: float = 0.15) -> int:
         """Prune memories that have decayed below threshold.
