@@ -123,7 +123,7 @@ export default function ChatInput() {
 
           {/* Model Selector Dropdown */}
           {modelDropdownOpen && (
-            <div className="absolute bottom-14 right-14 w-96 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-xl rounded-2xl z-50 flex flex-col max-h-[480px]">
+            <div className="absolute top-full right-0 mt-2 w-96 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-xl rounded-2xl z-50 flex flex-col max-h-[min(60vh,420px)]">
               
               <div className="overflow-y-auto p-2">
                 {/* Section 1: Auto-Router Profiles */}
