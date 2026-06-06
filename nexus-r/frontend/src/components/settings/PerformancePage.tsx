@@ -37,7 +37,6 @@ export default function PerformancePage() {
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={18} /> },
     { id: 'models', label: 'Models', icon: <Box size={18} /> },
-    { id: 'default-model', label: 'Default Model', icon: <Box size={18} />, badge: 'NEW' },
     { id: 'api-keys', label: 'API Keys', icon: <Key size={18} /> },
     { id: 'appearance', label: 'Appearance', icon: <Palette size={18} /> },
     { id: 'agent-tools', label: 'Agent Tools', icon: <Wrench size={18} /> },

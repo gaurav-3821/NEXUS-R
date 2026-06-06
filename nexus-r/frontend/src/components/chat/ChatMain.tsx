@@ -14,17 +14,10 @@ export default function ChatMain() {
   return (
     <div className="flex flex-col h-full relative w-full items-center">
       
-      {/* Sticky Upgrade Pro Badge */}
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 z-50">
-        <button className={clsx("bg-accent-600 text-white rounded-l-xl shadow-lg hover:bg-accent-600 transition-colors flex flex-col items-center gap-2 border border-accent-400/30 border-r-0 group cursor-pointer", compactMode ? "py-2 px-1" : "py-4 px-1.5")}>
-          <Sparkles size={14} className="group-hover:scale-110 transition-transform text-yellow-300" />
-          <span className="[writing-mode:vertical-lr] rotate-180 text-xs font-semibold tracking-wider">Upgrade Pro</span>
-        </button>
-      </div>
 
       {/* Messages Scroll Area */}
-      <div className={clsx("flex-1 overflow-y-auto w-full px-4 scroll-smooth", compactMode ? "pt-4 pb-2" : "pt-8 pb-4")}>
-        <div className={clsx("max-w-4xl mx-auto flex flex-col", compactMode ? "gap-4" : "gap-10")}>
+      <div className={clsx("flex-1 overflow-y-auto w-full scroll-smooth", compactMode ? "pt-4 pb-2" : "pt-8 pb-4")}>
+        <div className={clsx("max-w-4xl mx-auto px-4 flex flex-col", compactMode ? "gap-4" : "gap-10")}>
           {messages.map((msg) => (
             <div 
               key={msg.id} 

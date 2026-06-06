@@ -69,7 +69,7 @@ export default function ChatInput() {
   ];
 
   return (
-    <div className="flex flex-col mx-auto w-full max-w-4xl px-8 pb-8 relative z-20">
+    <div className="flex flex-col mx-auto w-full max-w-4xl px-4 pb-8 relative z-20">
       {/* Input Container */}
       <div className="relative flex items-center gap-2 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-full p-2 shadow-[0_8px_30px_rgb(0,0,0,0.04)] focus-within:ring-2 focus-within:ring-accent-500/20 focus-within:border-accent-300 transition-all">
         
