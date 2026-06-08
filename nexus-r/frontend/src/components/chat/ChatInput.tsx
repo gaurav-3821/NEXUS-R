@@ -9,11 +9,10 @@ import { useNavigate } from 'react-router-dom';
 
 export default function ChatInput() {
   const navigate = useNavigate();
-  const [input, setInput] = useState('');
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState('Auto Router');
   const [searchFilter, setSearchFilter] = useState('');
-  const { sendChatMessage, interruptChat, streamingMsgId, attachedImages } = useAppStore();
+  const { sendChatMessage, interruptChat, streamingMsgId, attachedImages, chatInput, setChatInput } = useAppStore();
   const { loadModels, openrouterModels, pinnedCloudModels, togglePinnedModel, listOpenRouter, routingProfile } = useModelsStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -28,6 +27,10 @@ export default function ChatInput() {
   useEffect(() => {
     loadModels();
   }, [loadModels]);
+
+  useEffect(() => {
+    autoResize();
+  }, [chatInput]);
 
   useEffect(() => {
     if (!modelDropdownOpen) setSearchFilter('');
@@ -59,8 +62,8 @@ export default function ChatInput() {
       interruptChat();
     } else {
       const modelToSend = selectedModel === 'Auto Router' ? undefined : selectedModel;
-      sendChatMessage(input, modelToSend);
-      setInput('');
+      sendChatMessage(chatInput, modelToSend);
+      setChatInput('');
       if (textareaRef.current) { textareaRef.current.style.height = 'auto'; }
     }
   };
@@ -100,8 +103,8 @@ export default function ChatInput() {
         {/* Text Area */}
         <textarea
           ref={textareaRef}
-          value={input}
-          onChange={(e) => { setInput(e.target.value); autoResize(); }}
+          value={chatInput}
+          onChange={(e) => { setChatInput(e.target.value); autoResize(); }}
           onKeyDown={handleKeyDown}
           placeholder="What's in your mind?..."
           className="flex-1 max-h-32 bg-transparent resize-none outline-none py-3 px-2 text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500"
@@ -114,16 +117,16 @@ export default function ChatInput() {
           {/* Model Selector Button */}
           <button 
             onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-[#0f172a] hover:bg-gray-100 rounded-full border border-gray-200 dark:border-slate-800 transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 dark:bg-orange-700 dark:hover:bg-orange-800 rounded-full transition-colors"
           >
             <ModelBadge modelId={selectedModel} size={16} />
             <span>{selectedModel}</span>
-            <ChevronDown size={14} className="text-gray-400" />
+            <ChevronDown size={14} className="text-white opacity-80" />
           </button>
 
           {/* Model Selector Dropdown */}
           {modelDropdownOpen && (
-            <div className="absolute top-full right-0 mt-2 w-96 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-xl rounded-2xl z-50 flex flex-col max-h-[min(60vh,420px)]">
+            <div className="absolute bottom-14 right-14 w-96 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 shadow-xl rounded-2xl z-50 flex flex-col max-h-[min(50vh,280px)]">
               
               <div className="flex-1 min-h-0 overflow-y-auto p-2">
                 {/* Section 1: Auto-Router Profiles */}
@@ -135,7 +138,7 @@ export default function ChatInput() {
                 <button
                   onClick={() => { setSelectedModel("Auto Router"); setModelDropdownOpen(false); }}
                   className={clsx(
-                    "w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                    "w-full flex items-center gap-3 p-2 rounded-xl transition-colors text-left",
                     selectedModel === "Auto Router" ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                   )}
                 >
@@ -155,7 +158,7 @@ export default function ChatInput() {
                     key={item.key}
                     onClick={() => { setSelectedModel(item.model); setModelDropdownOpen(false); }}
                     className={clsx(
-                      "w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                      "w-full flex items-center gap-3 p-2 rounded-xl transition-colors text-left",
                       selectedModel === item.model ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                     )}
                   >
@@ -190,7 +193,7 @@ export default function ChatInput() {
                         key={id}
                         onClick={() => { setSelectedModel(id); setModelDropdownOpen(false); }}
                         className={clsx(
-                          "w-full flex items-center gap-3 p-3 rounded-xl transition-colors text-left",
+                          "w-full flex items-center gap-3 p-2 rounded-xl transition-colors text-left",
                           selectedModel === id ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                         )}
                       >
@@ -251,7 +254,7 @@ export default function ChatInput() {
                         <button
                           onClick={() => { setSelectedModel(model.id); setModelDropdownOpen(false); }}
                           className={clsx(
-                            "flex-1 flex items-center gap-3 p-3 rounded-xl transition-colors text-left min-w-0",
+                            "flex-1 flex items-center gap-3 p-2 rounded-xl transition-colors text-left min-w-0",
                             selectedModel === model.id ? "bg-accent-50 dark:bg-accent-900/20" : "hover:bg-gray-50 dark:hover:bg-slate-800"
                           )}
                         >
@@ -296,14 +299,14 @@ export default function ChatInput() {
           {/* Send Button */}
           <button 
             onClick={handleSend}
-            disabled={!input.trim() && !streamingMsgId && attachedImages.length === 0}
+            disabled={!chatInput.trim() && !streamingMsgId && attachedImages.length === 0}
             className={clsx(
               "p-3 rounded-full transition-all flex items-center justify-center w-11 h-11",
               streamingMsgId 
                 ? "bg-red-50 text-red-500 hover:bg-red-100" 
-                : input.trim() || attachedImages.length > 0
-                  ? "bg-accent-600 text-white hover:bg-accent-600 shadow-md"
-                  : "bg-gray-100 text-gray-400"
+                : chatInput.trim() || attachedImages.length > 0
+                  ? "bg-orange-600 text-white hover:bg-orange-700 dark:bg-orange-700 dark:hover:bg-orange-800 shadow-md"
+                  : "bg-orange-600/50 text-white dark:bg-orange-700/50"
             )}
           >
             {streamingMsgId ? <Square size={16} className="fill-current" /> : <Send size={16} className="-translate-x-[1px] translate-y-[1px]" />}

@@ -18,7 +18,7 @@ export default function MemoryPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const activeTab = location.pathname.split('/').pop() || 'memory';
-  const { stats, detailStats, loadMemories, loadDetailStats, clearAll, rebuild, optimize, setPersistent, setSmart, persistentEnabled, smartEnabled, isLoading } = useMemoryStore();
+  const { stats, detailStats, memories, loadMemories, loadDetailStats, clearAll, rebuild, optimize, setPersistent, setSmart, persistentEnabled, smartEnabled, isLoading, saveMemory } = useMemoryStore();
   const [showExplorer, setShowExplorer] = useState(false);
 
   useEffect(() => {
@@ -26,20 +26,46 @@ export default function MemoryPage() {
     loadDetailStats();
   }, [loadMemories, loadDetailStats]);
 
-  const handleClear = async () => { await clearAll(); };
-  const handleRebuild = async () => { await rebuild(); };
-  const handleOptimize = async () => { await optimize(); };
+  const handleClear = async () => {
+    const ok = await clearAll();
+    showToast(ok ? 'All memories cleared.' : 'Failed to clear memories.', ok ? 'success' : 'error');
+  };
+  const handleRebuild = async () => {
+    const ok = await rebuild();
+    showToast(ok ? 'Memory index rebuilt.' : 'Failed to rebuild index.', ok ? 'success' : 'error');
+  };
+  const handleOptimize = async () => {
+    const ok = await optimize();
+    showToast(ok ? 'Memory optimized.' : 'Failed to optimize.', ok ? 'success' : 'error');
+  };
 
-  const totalMem = detailStats?.total_memories || 0;
+  const handleSaveMemory = async () => {
+    if (!saveInput.trim()) return;
+    const ok = await saveMemory(saveInput.trim(), 'golden', 0.9, 0.9);
+    showToast(ok ? 'Memory Saved!' : 'Failed to save memory.', ok ? 'success' : 'error');
+    if (ok) setSaveInput('');
+  };
+
   const cats = detailStats?.categories || {};
   const semantic = cats.semantic || 0;
   const golden = cats.golden || 0;
+  const persistent = cats.persistent || 0;
+  const smart = cats.smart || 0;
+  const totalMem = detailStats?.total_memories || (semantic + golden + persistent + smart);
   const nonZeroTotal = Math.max(totalMem, 1);
   const semanticPct = Math.round((semantic / nonZeroTotal) * 100);
   const goldenPct = Math.round((golden / nonZeroTotal) * 100);
-  const persistentPct = totalMem > 0 && persistentEnabled ? Math.max(10, 100 - semanticPct - goldenPct - 5) : 0;
-  const smartPct = totalMem > 0 && smartEnabled ? 5 : 0;
+  const persistentPct = Math.round((persistent / nonZeroTotal) * 100);
+  const smartPct = Math.round((smart / nonZeroTotal) * 100);
   const otherPct = Math.max(0, 100 - semanticPct - goldenPct - persistentPct - smartPct);
+
+  const [saveInput, setSaveInput] = useState('');
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  };
 
   const tabs = [
     { id: 'general', label: 'General', icon: <Settings size={18} /> },
@@ -80,6 +106,15 @@ export default function MemoryPage() {
 
   const rightPanel = (
     <div className="space-y-6">
+      {toast && (
+        <div className={`px-4 py-3 rounded-xl text-sm font-semibold shadow-lg animate-in slide-in-from-top-2 fade-in duration-200 ${
+          toast.type === 'success'
+            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+            : 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800'
+        }`}>
+          {toast.message}
+        </div>
+      )}
       <SettingsCard title="Memory Summary">
         <div className="flex gap-4 items-center mb-6">
           <div className="relative w-16 h-16">
@@ -94,8 +129,11 @@ export default function MemoryPage() {
               {persistentPct > 0 && (
                 <circle cx="18" cy="18" r="16" fill="none" className="stroke-orange-500 dark:stroke-orange-400" strokeWidth="4" strokeDasharray={`${persistentPct} 100`} strokeDashoffset={`-${semanticPct + goldenPct}`}></circle>
               )}
+              {smartPct > 0 && (
+                <circle cx="18" cy="18" r="16" fill="none" className="stroke-purple-500 dark:stroke-purple-400" strokeWidth="4" strokeDasharray={`${smartPct} 100`} strokeDashoffset={`-${semanticPct + goldenPct + persistentPct}`}></circle>
+              )}
               {otherPct > 0 && (
-                <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="4" strokeDasharray={`${otherPct} 100`} strokeDashoffset={`-${semanticPct + goldenPct + persistentPct}`}></circle>
+                <circle cx="18" cy="18" r="16" fill="none" className="stroke-gray-300 dark:stroke-gray-600" strokeWidth="4" strokeDasharray={`${otherPct} 100`} strokeDashoffset={`-${semanticPct + goldenPct + persistentPct + smartPct}`}></circle>
               )}
             </svg>
           </div>
@@ -112,10 +150,18 @@ export default function MemoryPage() {
               <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-orange-500 dark:bg-orange-400"></div> Persistent Memory</div>
               <span className="text-gray-900 dark:text-gray-100">{persistentPct}%</span>
             </div>
-            <div className="flex items-center justify-between text-xs font-semibold">
-              <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></div> Others</div>
-              <span className="text-gray-900 dark:text-gray-100">{otherPct}%</span>
-            </div>
+            {smartPct > 0 && (
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-purple-500 dark:bg-purple-400"></div> Smart Memory</div>
+                <span className="text-gray-900 dark:text-gray-100">{smartPct}%</span>
+              </div>
+            )}
+            {otherPct > 0 && (
+              <div className="flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center gap-1.5 text-gray-600 dark:text-gray-400"><div className="w-1.5 h-1.5 rounded-full bg-gray-300 dark:bg-gray-600"></div> Others</div>
+                <span className="text-gray-900 dark:text-gray-100">{otherPct}%</span>
+              </div>
+            )}
           </div>
         </div>
       </SettingsCard>
@@ -139,6 +185,24 @@ export default function MemoryPage() {
 
       <SettingsCard title="Quick Actions">
         <div className="space-y-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={saveInput}
+              onChange={(e) => setSaveInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveMemory(); }}
+              placeholder="Type a fact to save as golden memory..."
+              className="flex-1 px-4 py-2.5 bg-gray-50 dark:bg-[#0f172a] border border-gray-200 dark:border-slate-800 rounded-xl text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:text-gray-200 dark:focus:ring-blue-900/20"
+            />
+            <button
+              onClick={handleSaveMemory}
+              disabled={!saveInput.trim() || isLoading}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 dark:disabled:bg-slate-700 text-white rounded-xl text-sm font-semibold transition-colors shadow-sm flex items-center gap-2"
+            >
+              Save Memory
+            </button>
+          </div>
+          <hr className="border-gray-100 dark:border-slate-800" />
           <button onClick={handleClear} className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-sm font-semibold text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-3 transition-colors text-left">
             <Trash2 size={16} /> Clear All Memories
           </button>
@@ -152,6 +216,27 @@ export default function MemoryPage() {
             <Search size={16} className="text-blue-500 dark:text-blue-400" /> View Memory Explorer
           </button>
         </div>
+      </SettingsCard>
+
+      <SettingsCard title="Recent Memories">
+        {isLoading && memories.length === 0 ? (
+          <p className="text-sm text-gray-400">Loading...</p>
+        ) : memories.length === 0 ? (
+          <p className="text-sm text-gray-500 dark:text-gray-400">No memories recorded yet.</p>
+        ) : (
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {[...memories].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5).map(m => (
+              <div key={m.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-slate-800/50 rounded-xl border border-gray-100 dark:border-slate-800">
+                <div>
+                  <span className="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-blue-700 bg-blue-100 dark:text-blue-300 dark:bg-blue-900/30 rounded-full">
+                    {m.type}
+                  </span>
+                  <p className="text-sm text-gray-700 dark:text-gray-200 mt-1 leading-relaxed">{m.fact_text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </SettingsCard>
 
       <SettingsCard title="Memory Health">

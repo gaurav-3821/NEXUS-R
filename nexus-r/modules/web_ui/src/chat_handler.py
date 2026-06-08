@@ -73,6 +73,7 @@ class ChatHandler:
         ws_handler=None,
         perms=None,
         vision_processor: VisionProcessor | None = None,
+        memory_manager=None,
     ) -> None:
         self.event_store = event_store
         self.cost_tracker = cost_tracker
@@ -80,6 +81,7 @@ class ChatHandler:
         self.ws_handler = ws_handler
         self.perms = perms
         self.vision_processor = vision_processor or VisionProcessor()
+        self.memory_manager = memory_manager
         
         # Phase 3 Personalization Modules
         from modules.input_gateway.src.memory_parser import MemoryParser
@@ -134,7 +136,7 @@ class ChatHandler:
         self.widget_registry.register(CalculatorWidget(self.calculator))
         self.widget_registry.register(StockWidget())
         self.widget_registry.register(CitationWidget())
-        self.widget_registry.register(RouterDecisionWidget())
+        # self.widget_registry.register(RouterDecisionWidget())
         self.widget_registry.register(ModelStatusWidget())
         self.widget_registry.register(MemoryWidget())
         self.widget_registry.register(CostAnalyticsWidget())
@@ -150,6 +152,14 @@ class ChatHandler:
         self._paused_browsers: dict[str, Any] = {}
         self._persistent_memory_enabled = True
         self._smart_memory_enabled = True
+
+
+    def _auto_extract(self, raw_chat_history: list[str], conversation_id: str = "__default__") -> None:
+        if self.memory_manager is None:
+            return
+        asyncio.create_task(
+            self.memory_manager.auto_extract_and_compress(raw_chat_history, conversation_id=conversation_id)
+        )
 
 
     async def _prepare_intent(
@@ -812,6 +822,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 self.pattern_store.extract_and_save(message, res.get("content", ""))
                 
             asyncio.create_task(self.memory_engine.extract_memories(message, res.get("content", ""), conversation_id=conversation_id))
+            self._auto_extract([message, res.get("content", "")], conversation_id=conversation_id)
                 
             if telemetry:
                 for k, v in telemetry.items():
@@ -1044,6 +1055,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
             self.pattern_store.extract_and_save(message, full_text)
             
         asyncio.create_task(self.memory_engine.extract_memories(message, full_text, conversation_id=conversation_id))
+        self._auto_extract([message, full_text], conversation_id=conversation_id)
             
         if telemetry:
             for k, v in telemetry.items():
@@ -1479,6 +1491,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                                 await self.memory_engine.extract_memories(updated_text, "")
                             except Exception as mem_err:
                                 logger.warning("Failed to extract memories from browser content: %s", mem_err)
+                            self._auto_extract([updated_text], conversation_id=conversation_id)
                         
                         result_msg = (
                             f"\n\n[SYSTEM ACTION RESULT]\n"
@@ -1585,6 +1598,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                                  
         # Memory Extraction
         asyncio.create_task(self.memory_engine.extract_memories(intent.raw_input, full_text, conversation_id=conversation_id))
+        self._auto_extract([intent.raw_input, full_text], conversation_id=conversation_id)
         
         return response_data
 
@@ -1687,6 +1701,61 @@ When you output a `browser_action`, the system will execute it on the page, chec
             await self.delete_conversation(c["conversation_id"])
         return True
 
+    async def truncate_conversation(self, conversation_id: str, message_id: str, keep_inclusive: bool = True) -> bool:
+        # 1. Get the target message to find its timestamp (for semantic memories cleanup)
+        message_data = await self.get_message(message_id)
+        if not message_data:
+            return False
+        
+        # Find timestamp in isoformat. Convert to Unix timestamp for semantic memories
+        from datetime import datetime
+        try:
+            ts_str = message_data["timestamp"]
+            if ts_str.endswith("Z"):
+                ts_str = ts_str[:-1] + "+00:00"
+            dt = datetime.fromisoformat(ts_str)
+            unix_ts = dt.timestamp()
+        except Exception:
+            unix_ts = None
+            
+        # 2. Truncate events in the database
+        success = await self.event_store.truncate_events(conversation_id, message_id, keep_inclusive)
+        if not success:
+            return False
+            
+        # 3. Clean up corresponding semantic memories
+        if unix_ts is not None and hasattr(self, "memory_engine") and self.memory_engine:
+            try:
+                await self.memory_engine.initialize()
+                operator = ">" if keep_inclusive else ">="
+                await self.memory_engine._db.execute(
+                    f"DELETE FROM semantic_memories WHERE conversation_id = ? AND created_at {operator} ?",
+                    (conversation_id, unix_ts)
+                )
+                await self.memory_engine._db.commit()
+            except Exception as e:
+                logger.warning("Failed to clean up semantic memories during truncate: %s", e)
+                
+        return True
+
+    async def record_message_feedback(self, conversation_id: str, message_id: str, feedback: str) -> bool:
+        # Verify the message exists
+        msg = await self.get_message(message_id)
+        if not msg:
+            return False
+            
+        event = Event(
+            event_type="message_feedback_recorded",
+            data={
+                "message_id": message_id,
+                "conversation_id": conversation_id,
+                "feedback": feedback,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        await self.event_store.append(event)
+        return True
+
     async def get_conversations(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         events = await self.event_store.get_by_type("conversation_created")
         deleted_events = await self.event_store.get_by_type("conversation_deleted")
@@ -1719,6 +1788,15 @@ When you output a `browser_action`, the system will execute it on the page, chec
     ) -> list[dict[str, Any]]:
         sent = await self.event_store.get_by_type("chat_message_sent")
         received = await self.event_store.get_by_type("chat_message_received")
+        feedback_events = await self.event_store.get_by_type("message_feedback_recorded")
+        
+        feedback_map = {}
+        sorted_feedback = sorted(feedback_events, key=lambda e: e.data.get("timestamp", ""))
+        for event in sorted_feedback:
+            msg_id = event.data.get("message_id")
+            if msg_id:
+                feedback_map[msg_id] = event.data.get("feedback", "")
+
         all_msgs: list[dict[str, Any]] = []
         for event in sent:
             if conversation_id and event.data.get("conversation_id") != conversation_id:
@@ -1735,8 +1813,9 @@ When you output a `browser_action`, the system will execute it on the page, chec
         for event in received:
             if conversation_id and event.data.get("conversation_id") != conversation_id:
                 continue
+            msg_id = event.data.get("message_id", "")
             all_msgs.append({
-                "message_id": event.data.get("message_id", ""),
+                "message_id": msg_id,
                 "conversation_id": event.data.get("conversation_id", ""),
                 "content": event.data.get("content", ""),
                 "role": "assistant",
@@ -1746,6 +1825,7 @@ When you output a `browser_action`, the system will execute it on the page, chec
                 "timestamp": event.data.get("timestamp", ""),
                 "blocked": bool(event.data.get("blocked", False)),
                 "widgets": event.data.get("widgets", []),
+                "feedback": feedback_map.get(msg_id, ""),
             })
         all_msgs.sort(key=lambda m: m.get("timestamp", ""))
         return all_msgs[offset:offset + limit]

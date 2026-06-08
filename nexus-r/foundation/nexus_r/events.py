@@ -434,6 +434,55 @@ class EventStore:
         await db.execute("PRAGMA wal_autocheckpoint=1000")
         return db
 
+    async def truncate_events(self, conversation_id: str, message_id: str, keep_inclusive: bool = True) -> bool:
+        await self.initialize()
+        assert self._write_db is not None
+        
+        # 1. Find the timestamp of the target message
+        async with self._write_lock:
+            # First try matching by event ID (direct UUID)
+            async with self._write_db.execute(
+                "SELECT timestamp FROM events WHERE id = ?", (message_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            
+            # If not found by event ID, search by message_id inside data_json
+            if not row:
+                like_pattern_msg1 = f'%"message_id":"{message_id}"%'
+                like_pattern_msg2 = f'%"message_id": "{message_id}"%'
+                async with self._write_db.execute(
+                    """
+                    SELECT timestamp FROM events 
+                    WHERE (data_json LIKE ? OR data_json LIKE ?)
+                    AND event_type IN ('chat_message_sent', 'chat_message_received')
+                    """, (like_pattern_msg1, like_pattern_msg2)
+                ) as cursor:
+                    row = await cursor.fetchone()
+            
+            if not row:
+                return False
+            target_timestamp = row["timestamp"]
+            
+            # 2. Perform deletion based on keep_inclusive
+            # If keep_inclusive is True, we delete events after target_timestamp.
+            # If keep_inclusive is False, we delete events at or after target_timestamp.
+            operator = ">" if keep_inclusive else ">="
+            
+            # Delete chat events that match this conversation_id
+            like_pattern1 = f'%"conversation_id":"{conversation_id}"%'
+            like_pattern2 = f'%"conversation_id": "{conversation_id}"%'
+            await self._write_db.execute(
+                f"""
+                DELETE FROM events 
+                WHERE (event_type IN ('chat_message_sent', 'chat_message_received', 'message_feedback_recorded'))
+                AND timestamp {operator} ?
+                AND (data_json LIKE ? OR data_json LIKE ?)
+                """,
+                (target_timestamp, like_pattern1, like_pattern2),
+            )
+            await self._write_db.commit()
+        return True
+
     async def close(self) -> None:
         if self._append_queue is not None:
             await self._append_queue.put(None)

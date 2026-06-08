@@ -15,7 +15,7 @@ export function MemoryExplorerModal({ onClose }: MemoryExplorerModalProps) {
     if (!searchQuery.trim()) return memories;
     const lowerQ = searchQuery.toLowerCase();
     return memories.filter(m => 
-      m.content.toLowerCase().includes(lowerQ) || 
+      m.fact_text.toLowerCase().includes(lowerQ) || 
       m.type.toLowerCase().includes(lowerQ)
     );
   }, [memories, searchQuery]);
@@ -131,7 +131,7 @@ export function MemoryExplorerModal({ onClose }: MemoryExplorerModalProps) {
                     </button>
                   </div>
                   <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed font-medium line-clamp-4">
-                    {memory.content}
+                    {memory.fact_text}
                   </p>
                 </div>
               ))}

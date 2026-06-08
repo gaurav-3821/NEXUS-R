@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { sendChat, streamChat, interruptChat, getConversations, getHistory, deleteConversation as apiDeleteConversation, clearAllConversations as apiClearAll } from '../api/chat';
+import { sendChat, orchestrateChat, interruptChat, getConversations, getHistory, deleteConversation as apiDeleteConversation, clearAllConversations as apiClearAll, truncateConversation, recordFeedback } from '../api/chat';
 
 export interface MessageWidget {
   type: string;
@@ -20,6 +20,7 @@ export interface Message {
   auto_model_reason?: string;
   reasoning_content?: string;
   widgets?: MessageWidget[];
+  feedback?: 'like' | 'dislike' | '';
   metadata?: {
     model: string;
     provider: string;
@@ -47,6 +48,7 @@ interface AppState {
   optimizationMode: 'speed' | 'balanced' | 'quality';
   searchEnabled: boolean;
   searchSources: string[];
+  chatInput: string;
   
   // Dev Monitor Metrics
   workflowState: string;
@@ -68,6 +70,7 @@ interface AppState {
   setOptimizationMode: (mode: 'speed' | 'balanced' | 'quality') => void;
   setSearchEnabled: (enabled: boolean) => void;
   setSearchSources: (sources: string[]) => void;
+  setChatInput: (val: string) => void;
   
   // Domain actions
   sendChatMessage: (content: string, model?: string) => Promise<void>;
@@ -77,6 +80,8 @@ interface AppState {
   deleteConversation: (conversationId: string) => Promise<void>;
   clearAllConversations: () => Promise<void>;
   startNewChat: () => void;
+  revertMessage: (messageId: string) => Promise<string | null>;
+  recordMessageFeedback: (messageId: string, feedback: 'like' | 'dislike' | '') => Promise<void>;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -90,6 +95,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   optimizationMode: 'balanced',
   searchEnabled: false,
   searchSources: ['web'],
+  chatInput: '',
   
   workflowState: 'idle',
   workflowStage: 'Ready',
@@ -112,6 +118,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setOptimizationMode: (mode) => set({ optimizationMode: mode }),
   setSearchEnabled: (enabled) => set({ searchEnabled: enabled }),
   setSearchSources: (sources) => set({ searchSources: sources }),
+  setChatInput: (val) => set({ chatInput: val }),
 
   sendChatMessage: async (content: string, model?: string) => {
     const state = get();
@@ -164,7 +171,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         streamingMsgId: msgId,
       }));
 
-      await streamChat(params, (event) => {
+      await orchestrateChat(params, (event) => {
         if (event.type === 'status') {
           set({ workflowState: event.value, workflowStage: event.value });
         } else if (event.type === 'widget') {
@@ -193,6 +200,21 @@ export const useAppStore = create<AppState>((set, get) => ({
             });
             return { messages: updatedMsgs };
           });
+        } else if (event.type === 'sources') {
+          const srcData = event.data;
+          const sources = Array.isArray(srcData) ? srcData : [];
+          if (sources.length > 0) {
+            set((s) => {
+              const updatedMsgs = s.messages.map(m => {
+                if (m.id === msgId) {
+                  const widget = { type: 'citation', data: { sources } };
+                  return { ...m, widgets: [...(m.widgets || []), widget] };
+                }
+                return m;
+              });
+              return { messages: updatedMsgs };
+            });
+          }
         } else if (event.type === 'reasoning') {
           set((s) => {
             const updatedMsgs = s.messages.map(m => {
@@ -281,19 +303,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         id: m.message_id || crypto.randomUUID(),
         role: m.role,
         content: m.content,
-        time: new Date(m.timestamp).getTime(),
-        widgets: m.widgets || undefined,
-        metadata: m.model ? {
-          model: m.model,
-          provider: m.provider || '',
-          route: m.route || '',
-          latency_ms: m.latency_ms || 0,
-          cost: m.cost || 0,
+        streaming: false,
+        time: new Date(m.timestamp || Date.now()).getTime(),
+        reasoning_content: m.reasoning_content || undefined,
+        widgets: Array.isArray(m.widgets) ? m.widgets : undefined,
+        feedback: m.feedback || undefined,
+        metadata: m.model || m.metadata ? {
+          model: m.model || m.metadata?.model || '',
+          provider: m.provider || m.metadata?.provider || '',
+          route: m.route || m.metadata?.route || '',
+          latency_ms: m.latency_ms || m.metadata?.latency_ms || 0,
+          cost: m.cost || m.metadata?.cost || 0,
+          reasoning_tokens: m.reasoning_tokens || m.metadata?.reasoning_tokens || undefined,
         } : undefined,
       }));
       set({ messages: msgs, currentConversationId: conversationId, streamingMsgId: null });
     } catch (e) {
       console.error('Failed to load conversation messages:', e);
+      set({ messages: [], currentConversationId: conversationId });
     }
   },
 
@@ -335,5 +362,67 @@ export const useAppStore = create<AppState>((set, get) => ({
       totalSessionCost: 0,
       reasoningTrace: 'No active reasoning trace.',
     });
+  },
+
+  revertMessage: async (messageId: string) => {
+    const state = get();
+    const conversationId = state.currentConversationId;
+    if (!conversationId) return null;
+    
+    // Find the message we are reverting
+    const targetIndex = state.messages.findIndex(m => m.id === messageId);
+    if (targetIndex === -1) return null;
+    
+    const targetMsg = state.messages[targetIndex];
+    let userMsgToRevert: Message | null = null;
+    let truncateAtId: string | null = null;
+    
+    if (targetMsg.role === 'user') {
+      userMsgToRevert = targetMsg;
+      truncateAtId = messageId;
+    } else {
+      // If assistant message, find the preceding user message
+      for (let i = targetIndex - 1; i >= 0; i--) {
+        if (state.messages[i].role === 'user') {
+          userMsgToRevert = state.messages[i];
+          truncateAtId = state.messages[i].id;
+          break;
+        }
+      }
+    }
+    
+    if (!userMsgToRevert || !truncateAtId) return null;
+    
+    try {
+      // Delete the target message and any subsequent messages (so keepInclusive = false)
+      await truncateConversation(conversationId, truncateAtId, false);
+      
+      // Update local state by removing the message and everything after it
+      const msgIndex = state.messages.findIndex(m => m.id === truncateAtId);
+      if (msgIndex !== -1) {
+        set({
+          messages: state.messages.slice(0, msgIndex)
+        });
+      }
+      return userMsgToRevert.content;
+    } catch (e) {
+      console.error('Failed to revert message:', e);
+      return null;
+    }
+  },
+
+  recordMessageFeedback: async (messageId: string, feedback: 'like' | 'dislike' | '') => {
+    const state = get();
+    const conversationId = state.currentConversationId;
+    if (!conversationId) return;
+    
+    try {
+      await recordFeedback(conversationId, messageId, feedback);
+      set((s) => ({
+        messages: s.messages.map(m => m.id === messageId ? { ...m, feedback } : m)
+      }));
+    } catch (e) {
+      console.error('Failed to record feedback:', e);
+    }
   }
 }));

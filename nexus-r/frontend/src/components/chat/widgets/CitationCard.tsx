@@ -7,7 +7,8 @@ interface CitationCardProps {
 }
 
 export default function CitationCard({ data }: CitationCardProps) {
-  const sources = data.sources ?? [];
+  if (!data) return null;
+  const sources = Array.isArray(data.sources) ? data.sources : [];
   if (sources.length === 0) return null;
 
   return (

@@ -25,6 +25,32 @@ class FakeEventStore:
     async def get_by_type(self, event_type: str) -> list[Event]:
         return [e for e in self.events if e.event_type == event_type]
 
+    async def truncate_events(self, conversation_id: str, message_id: str, keep_inclusive: bool = True) -> bool:
+        target_event = None
+        for e in self.events:
+            if e.id == message_id or e.data.get("message_id") == message_id:
+                target_event = e
+                break
+        if not target_event:
+            return False
+        
+        target_timestamp = target_event.timestamp
+        new_events = []
+        for e in self.events:
+            is_chat = e.event_type in ('chat_message_sent', 'chat_message_received', 'message_feedback_recorded')
+            has_conv = e.data.get("conversation_id") == conversation_id
+            
+            if is_chat and has_conv:
+                if keep_inclusive:
+                    should_delete = e.timestamp > target_timestamp
+                else:
+                    should_delete = e.timestamp >= target_timestamp
+                if should_delete:
+                    continue
+            new_events.append(e)
+        self.events = new_events
+        return True
+
 
 @pytest.fixture
 def chat_handler():
@@ -449,6 +475,126 @@ class TestChatHandlerQueries:
         cost_tracker.record.assert_called()
         ws_handler.notify_cost_update.assert_called()
         ws_handler.broadcast.assert_called()
+
+
+class TestChatHandlerFeedbackAndTruncation:
+    @pytest.mark.asyncio
+    async def test_record_message_feedback_success(self, chat_handler):
+        handler, store, _, _, _, _ = chat_handler
+        
+        store.events.append(Event(
+            event_type="chat_message_sent",
+            data={
+                "message_id": "msg_001",
+                "conversation_id": "conv_001",
+                "content": "Hello",
+                "timestamp": "2026-05-25T00:00:00Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 0, tzinfo=timezone.utc)
+        ))
+        
+        success = await handler.record_message_feedback("conv_001", "msg_001", "like")
+        assert success is True
+        
+        feedback_events = await store.get_by_type("message_feedback_recorded")
+        assert len(feedback_events) == 1
+        assert feedback_events[0].data["message_id"] == "msg_001"
+        assert feedback_events[0].data["feedback"] == "like"
+
+    @pytest.mark.asyncio
+    async def test_record_message_feedback_not_found(self, chat_handler):
+        handler, _, _, _, _, _ = chat_handler
+        success = await handler.record_message_feedback("conv_001", "msg_nonexistent", "like")
+        assert success is False
+
+    @pytest.mark.asyncio
+    async def test_truncate_conversation_success(self, chat_handler):
+        handler, store, _, _, _, _ = chat_handler
+        
+        store.events.append(Event(
+            event_type="chat_message_sent",
+            data={
+                "message_id": "msg_001",
+                "conversation_id": "conv_001",
+                "content": "First message",
+                "timestamp": "2026-05-25T00:00:00Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 0, tzinfo=timezone.utc)
+        ))
+        store.events.append(Event(
+            event_type="chat_message_received",
+            data={
+                "message_id": "msg_002",
+                "conversation_id": "conv_001",
+                "content": "First response",
+                "timestamp": "2026-05-25T00:00:01Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 1, tzinfo=timezone.utc)
+        ))
+        store.events.append(Event(
+            event_type="chat_message_sent",
+            data={
+                "message_id": "msg_003",
+                "conversation_id": "conv_001",
+                "content": "Second message",
+                "timestamp": "2026-05-25T00:00:02Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 2, tzinfo=timezone.utc)
+        ))
+        
+        success = await handler.truncate_conversation("conv_001", "msg_002", keep_inclusive=False)
+        assert success is True
+        
+        history = await handler.get_history("conv_001")
+        assert len(history) == 1
+        assert history[0]["message_id"] == "msg_001"
+
+    @pytest.mark.asyncio
+    async def test_truncate_conversation_not_found(self, chat_handler):
+        handler, _, _, _, _, _ = chat_handler
+        success = await handler.truncate_conversation("conv_001", "msg_nonexistent", keep_inclusive=False)
+        assert success is False
+
+    @pytest.mark.asyncio
+    async def test_get_history_injects_feedback(self, chat_handler):
+        handler, store, _, _, _, _ = chat_handler
+        
+        store.events.append(Event(
+            event_type="chat_message_sent",
+            data={
+                "message_id": "msg_001",
+                "conversation_id": "conv_001",
+                "content": "Hello",
+                "timestamp": "2026-05-25T00:00:00Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 0, tzinfo=timezone.utc)
+        ))
+        store.events.append(Event(
+            event_type="chat_message_received",
+            data={
+                "message_id": "msg_002",
+                "conversation_id": "conv_001",
+                "content": "Reply",
+                "timestamp": "2026-05-25T00:00:01Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 1, tzinfo=timezone.utc)
+        ))
+        store.events.append(Event(
+            event_type="message_feedback_recorded",
+            data={
+                "message_id": "msg_002",
+                "conversation_id": "conv_001",
+                "feedback": "like",
+                "timestamp": "2026-05-25T00:00:02Z"
+            },
+            timestamp=datetime(2026, 5, 25, 0, 0, 2, tzinfo=timezone.utc)
+        ))
+        
+        history = await handler.get_history("conv_001")
+        assert len(history) == 2
+        assert history[0]["message_id"] == "msg_001"
+        assert history[1]["message_id"] == "msg_002"
+        assert history[1]["feedback"] == "like"
 
 
 def _make_stream(*items):

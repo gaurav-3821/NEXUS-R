@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { getMemories, deleteMemory, clearAllMemories, rebuildMemoryIndex, optimizeMemory, getMemoryDetailStats, togglePersistentMemory, toggleSmartMemory } from '../api/memory';
+import { getMemories, deleteMemory, clearAllMemories, rebuildMemoryIndex, optimizeMemory, getMemoryDetailStats, togglePersistentMemory, toggleSmartMemory, saveMemory } from '../api/memory';
 import type { Memory, MemoryStats, MemoryDetailStats } from '../api/memory';
 
 interface MemoryState {
@@ -21,6 +21,7 @@ interface MemoryActions {
   optimize: () => Promise<boolean>;
   setPersistent: (enabled: boolean) => Promise<void>;
   setSmart: (enabled: boolean) => Promise<void>;
+  saveMemory: (content: string, type?: string, importance?: number, confidence?: number) => Promise<boolean>;
 }
 
 export type MemoryStore = MemoryState & MemoryActions;
@@ -130,6 +131,22 @@ export const useMemoryStore = create<MemoryStore>((set, get) => ({
       if (res.success) set({ smartEnabled: res.enabled });
     } catch (error: any) {
       console.error('Failed to toggle smart memory:', error);
+    }
+  },
+
+  saveMemory: async (content, type = 'golden', importance = 0.9, confidence = 0.9) => {
+    set({ isLoading: true, error: null });
+    try {
+      const res = await saveMemory({ fact_text: content, type, importance_score: importance, confidence });
+      if (res.success) {
+        await get().loadMemories();
+        await get().loadDetailStats();
+        return true;
+      }
+      return false;
+    } catch (error: any) {
+      set({ error: error.message || 'Failed to save memory', isLoading: false });
+      return false;
     }
   }
 }));

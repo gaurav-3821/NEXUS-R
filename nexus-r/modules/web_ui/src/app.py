@@ -16,6 +16,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nexus_r.events import Event, PermissionTier
+from nexus_r.memory import MemoryManager, ModelOrchestrator, memory_router
+from nexus_r.memory.vector_store import VectorStore
+from nexus_r.memory.routes import inject_manager as inject_memory_manager
 
 
 class DownloadRequest(BaseModel):
@@ -83,6 +86,9 @@ class HITLResumeRequest(BaseModel):
 class TruncateRequest(BaseModel):
     message_id: str
     keep_inclusive: bool = True
+
+class FeedbackRequest(BaseModel):
+    feedback: str
 
 class SuggestionRequest(BaseModel):
     prefix: str = Field(..., min_length=1, max_length=200)
@@ -546,6 +552,10 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
     global _secret_registry
     _secret_registry = None
 
+    # Initialize MemoryManager + ModelOrchestrator in either branch
+    _memory_manager: MemoryManager | None = None
+    _orchestrator: ModelOrchestrator | None = None
+
     if chat_handler is not None:
         _chat_handler = chat_handler
         router = getattr(_chat_handler, "router", None)
@@ -554,6 +564,18 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             models = getattr(router, "models", None)
             if models is not None:
                 _secret_registry = getattr(models, "secret_registry", None)
+        # Initialize memory + orchestrator using the injected chat_handler's router
+        if router is not None and getattr(router, "models", None) is not None:
+            _db_path = os.environ.get("NEXUS_MEMORY_DB", "nexus_memory.db")
+            _vector_store = VectorStore()
+            _memory_manager = MemoryManager(db_path=_db_path, vector_store=_vector_store)
+            inject_memory_manager(_memory_manager)
+            asyncio.create_task(_memory_manager.initialize())
+            app.include_router(memory_router)
+            _orchestrator = ModelOrchestrator(
+                memory_manager=_memory_manager,
+                model_registry=router.models,
+            )
     else:
         # Initialize default ChatHandler if none provided
         from modules.web_ui.src.chat_handler import ChatHandler
@@ -583,6 +605,13 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
         permission_enforcer = PermissionEnforcer()
         cost_tracker = CostTracker(event_store)
 
+        # Initialize MemoryManager with SQLite + ChromaDB persistence
+        _db_path = os.environ.get("NEXUS_MEMORY_DB", "nexus_memory.db")
+        _vector_store = VectorStore()
+        _memory_manager = MemoryManager(db_path=_db_path, vector_store=_vector_store)
+        inject_memory_manager(_memory_manager)
+        app.include_router(memory_router)
+
         _chat_handler = ChatHandler(
             event_store=event_store,
             cost_tracker=cost_tracker,
@@ -590,6 +619,13 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             ws_handler=_ws_handler,
             perms=permission_enforcer,
             vision_processor=VisionProcessor(),
+            memory_manager=_memory_manager,
+        )
+
+        # Initialize ModelOrchestrator — bridges BlackboardState + ModelRegistry
+        _orchestrator = ModelOrchestrator(
+            memory_manager=_memory_manager,
+            model_registry=router.models,
         )
 
     if cfg is None:
@@ -608,6 +644,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
 
     @app.on_event("startup")
     async def startup() -> None:
+        await _memory_manager.initialize()
         await _dashboard_service.initialize()
         if _model_manager is not None:
             try:
@@ -651,82 +688,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                 )
         return {"received": len(batch.signals)}
 
-    @app.get("/api/v1/memory")
-    async def get_memories(token: str = Query("")):
-        _check_auth(token)
-        if not _chat_handler or not hasattr(_chat_handler, "memory_engine"):
-            return {"memories": [], "stats": {}}
-            
-        memories = await _chat_handler.memory_engine.get_all_memories()
-        stats = await _chat_handler.memory_engine.get_stats()
-        return {"memories": memories, "stats": stats}
-        
-    @app.delete("/api/v1/memory/{memory_id}")
-    async def delete_memory(memory_id: str, token: str = Query("")):
-        _check_auth(token)
-        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
-            success = await _chat_handler.memory_engine.delete_memory(memory_id)
-            return {"success": success}
-        return {"success": False}
-        
-    @app.post("/api/v1/memory/clear")
-    async def clear_memories(token: str = Query("")):
-        _check_auth(token)
-        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
-            count = await _chat_handler.memory_engine.clear_all()
-            return {"success": True, "count": count}
-        return {"success": False}
-
-    @app.post("/api/v1/memory/rebuild")
-    async def rebuild_memories(token: str = Query("")):
-        _check_auth(token)
-        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
-            rebuilt = await _chat_handler.memory_engine.rebuild_index()
-            return {"success": True, "rebuilt": rebuilt}
-        return {"success": False, "rebuilt": 0}
-
-    @app.post("/api/v1/memory/optimize")
-    async def optimize_memories(token: str = Query("")):
-        _check_auth(token)
-        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
-            result = await _chat_handler.memory_engine.optimize()
-            return {"success": True, **result}
-        return {"success": False, "pruned": 0, "remaining": 0}
-
-    @app.post("/api/v1/memory/persistent/toggle")
-    async def toggle_persistent_memory(token: str = Query(""), enabled: bool = Query(True)):
-        _check_auth(token)
-        if _chat_handler and hasattr(_chat_handler, "golden_memory"):
-            _chat_handler._persistent_memory_enabled = enabled
-            return {"success": True, "enabled": enabled}
-        return {"success": False, "enabled": False}
-
-    @app.post("/api/v1/memory/smart/toggle")
-    async def toggle_smart_memory(token: str = Query(""), enabled: bool = Query(True)):
-        _check_auth(token)
-        if _chat_handler and hasattr(_chat_handler, "memory_engine"):
-            _chat_handler._smart_memory_enabled = enabled
-            return {"success": True, "enabled": enabled}
-        return {"success": False, "enabled": False}
-
-    @app.get("/api/v1/memory/stats")
-    async def get_memory_stats(token: str = Query("")):
-        _check_auth(token)
-        if not _chat_handler:
-            return {"total_memories": 0, "total_size_bytes": 0, "categories": {}}
-        stats = {"total_memories": 0, "total_size_bytes": 0, "categories": {}}
-        if hasattr(_chat_handler, "memory_engine"):
-            eng_stats = await _chat_handler.memory_engine.get_stats()
-            stats["total_memories"] = eng_stats.get("total_memories", 0)
-            stats["total_size_bytes"] = eng_stats.get("total_size_bytes", 0)
-            stats["categories"]["semantic"] = eng_stats.get("total_memories", 0)
-        if hasattr(_chat_handler, "golden_memory"):
-            gm_stats = _chat_handler.golden_memory.get_stats() if hasattr(_chat_handler.golden_memory, "get_stats") else {}
-            stats["categories"]["golden"] = gm_stats.get("count", 0)
-            stats["total_memories"] += gm_stats.get("count", 0)
-        stats["categories"]["persistent"] = 1 if getattr(_chat_handler, "_persistent_memory_enabled", True) else 0
-        stats["categories"]["smart"] = 1 if getattr(_chat_handler, "_smart_memory_enabled", True) else 0
-        return stats
+    # Memory endpoints are handled by nexus_r.memory.routes (injected above)
 
     @app.get("/api/v1/cost/summary")
     async def get_summary(token: str = Query("")):
@@ -889,6 +851,137 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             media_type="text/event-stream"
         )
 
+    @app.post("/api/v1/chat/orchestrate")
+    async def chat_orchestrate(
+        request: ChatRequest,
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        _check_rate_limit("chat")
+        if not request.message.strip():
+            raise HTTPException(status_code=422, detail="Message cannot be empty")
+        if len(request.message) > 10000:
+            raise HTTPException(status_code=422, detail="Message too long")
+
+        conversation_id = request.conversation_id or "conv_" + uuid4().hex
+
+        if _memory_manager is None or _orchestrator is None:
+            raise HTTPException(status_code=501, detail="Orchestrator not initialized")
+
+        state = await _memory_manager.get_or_create_board(conversation_id)
+
+        # Inject research context when search is enabled
+        user_message = request.message
+        route_name = "auto"
+        research_sources: list[tuple[str, str, str]] = []
+        if request.search_enabled and request.mode != "speed" and _chat_handler is not None:
+            try:
+                research_engine = getattr(_chat_handler, "research_engine", None)
+                if research_engine is not None:
+                    from dataclasses import dataclass
+                    @dataclass
+                    class _MiniIntent:
+                        raw_input: str
+                    mini_intent = _MiniIntent(raw_input=request.message)
+                    research = await research_engine.run(mini_intent, request.mode, request.search_sources or ["web"])
+                    research_sources = research.sources or []
+                    if research.context_for_prompt:
+                        user_message = f"[Research Context]\n{research.context_for_prompt}\n\n{request.message}"
+            except Exception:
+                pass
+
+        is_new_conv = not request.conversation_id
+        msg_id = str(uuid4())
+
+        async def _orchestrate_stream():
+            import json
+            from datetime import datetime, timezone
+            try:
+                # Emit search sources before status events
+                if research_sources:
+                    sources_payload = [{'title': t, 'url': u, 'content': s} for t, u, s in research_sources]
+                    yield f"data: {json.dumps({'type': 'sources', 'data': sources_payload})}\n\n"
+
+                yield f"data: {json.dumps({'type': 'status', 'value': 'routing'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'value': 'thinking'})}\n\n"
+
+                started = datetime.now(timezone.utc)
+                last_model = ""
+                full_text = ""
+                reasoning_tokens: int | None = None
+
+                async for chunk in _orchestrator.execute_turn_stream(
+                    user_input=user_message,
+                    state=state,
+                ):
+                    if chunk.text:
+                        full_text += chunk.text
+                        yield f"data: {json.dumps({'type': 'token', 'content': chunk.text})}\n\n"
+                    if chunk.reasoning_tokens:
+                        yield f"data: {json.dumps({'type': 'reasoning', 'content': chunk.text})}\n\n"
+                        reasoning_tokens = chunk.reasoning_tokens
+                    if chunk.model_name:
+                        last_model = chunk.model_name
+
+                latency_ms = (datetime.now(timezone.utc) - started).total_seconds() * 1000
+                model_name = last_model or state.last_model_used or ""
+                provider = model_name.split("/")[0] if "/" in model_name else "ollama"
+                metadata = {
+                    "model": model_name,
+                    "provider": provider,
+                    "route": route_name,
+                    "latency_ms": latency_ms,
+                    "cost": 0.0,
+                }
+                if reasoning_tokens is not None:
+                    metadata["reasoning_tokens"] = reasoning_tokens
+
+                # Persist conversation to event store
+                if _chat_handler is not None and hasattr(_chat_handler, 'event_store'):
+                    ts = datetime.now(timezone.utc).isoformat()
+                    if is_new_conv:
+                        await _chat_handler.event_store.append(Event(
+                            event_type="conversation_created",
+                            data={
+                                "conversation_id": conversation_id,
+                                "title": request.message[:80],
+                                "created_at": ts,
+                                "message_count": 0,
+                            },
+                        ))
+                    await _chat_handler.event_store.append(Event(
+                        event_type="chat_message_sent",
+                        data={
+                            "message_id": msg_id,
+                            "conversation_id": conversation_id,
+                            "content": request.message,
+                            "model": model_name,
+                            "timestamp": ts,
+                        },
+                    ))
+                    await _chat_handler.event_store.append(Event(
+                        event_type="chat_message_received",
+                        data={
+                            "message_id": msg_id,
+                            "parent_message_id": msg_id,
+                            "conversation_id": conversation_id,
+                            "content": full_text,
+                            "role": "assistant",
+                            "model": model_name,
+                            "cost": 0.0,
+                            "latency_ms": latency_ms,
+                            "timestamp": ts,
+                            "blocked": False,
+                            "widgets": [],
+                        },
+                    ))
+
+                yield f"data: {json.dumps({'type': 'done', 'model': model_name, 'metadata': metadata, 'conversation_id': conversation_id})}\n\n"
+            except Exception as exc:
+                yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
+
+        return StreamingResponse(_orchestrate_stream(), media_type="text/event-stream")
+
     @app.post("/api/v1/chat/hitl-resume")
     async def chat_hitl_resume(
         request: HITLResumeRequest,
@@ -902,6 +995,26 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
             code=request.code,
             solved=request.solved
         )
+        return {"success": success}
+
+    @app.post("/api/v1/chat/messages/{message_id}/feedback")
+    async def chat_message_feedback(
+        message_id: str,
+        request: FeedbackRequest,
+        conversation_id: str = Query(...),
+        token: str = Query(""),
+    ):
+        _check_auth(token)
+        _check_rate_limit("message_feedback")
+        if _chat_handler is None:
+            raise HTTPException(status_code=501, detail="Chat handler not available")
+        success = await _chat_handler.record_message_feedback(
+            conversation_id=conversation_id,
+            message_id=message_id,
+            feedback=request.feedback
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="Message not found")
         return {"success": success}
 
     @app.post("/api/v1/chat/suggestions")
