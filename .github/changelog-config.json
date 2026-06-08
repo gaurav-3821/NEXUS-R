@@ -1,0 +1,14 @@
+{
+  "categories": [
+    { "title": "🚀 Features", "labels": ["enhancement", "feature"] },
+    { "title": "🐛 Bug Fixes", "labels": ["bug", "fix"] },
+    { "title": "📚 Documentation", "labels": ["documentation", "docs"] },
+    { "title": "🧪 Testing", "labels": ["test"] },
+    { "title": "🔧 Refactoring", "labels": ["refactor"] },
+    { "title": "⚙️ Maintenance", "labels": ["chore", "dependencies"] }
+  ],
+  "ignore_labels": ["no-changelog"],
+  "template": "${{CATEGORIZED_CHANGELOG}}",
+  "pr_template": "- ${{TITLE}} (#${{NUMBER}}) by @${{AUTHOR}}",
+  "max_pull_requests": 200
+}

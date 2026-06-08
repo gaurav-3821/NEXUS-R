@@ -1,99 +1,169 @@
-# Contributing To NEXUS-R
+# Contributing to NEXUS-R
 
-NEXUS-R is developed as a modular runtime with a tracked AI-collaboration layer
-in `.nexus-intel/`. Contributions should preserve that modularity, keep changes
-bounded, and avoid mixing unrelated work into a single update.
+Thank you for your interest in contributing to NEXUS-R! This document provides
+guidelines and workflows for effective collaboration.
 
-## Before You Change Code
+## Table of Contents
 
-1. Read the relevant spec under `nexus-r/specs/`.
-2. Check `git status` and confirm whether the worktree already contains active
-   changes.
-3. Limit your change to one coherent scope.
-4. Prefer updating tests and docs alongside behavior changes.
+- [Code of Conduct](#code-of-conduct)
+- [Getting Started](#getting-started)
+- [Development Workflow](#development-workflow)
+- [Code Standards](#code-standards)
+- [Testing Requirements](#testing-requirements)
+- [Pull Request Process](#pull-request-process)
+- [Release Process](#release-process)
 
-## Repository Layout
+## Code of Conduct
 
-```text
-NEXUS-R/
-|- .nexus-intel/              AI task, governance, and audit records
-|- docs/                      reports, exports, plans, and reference material
-|- nexus-r/
-|  |- foundation/nexus_r/     shared runtime primitives
-|  |- modules/                runtime subsystems
-|  |- frontend/               React + TypeScript + Vite UI source
-|  |- specs/                  product and subsystem specifications
-|  |- tests/                  unit, integration, security, stress, and failure tests
-|  |- scripts/                validation and benchmark helpers
-|  |- pyproject.toml          package metadata and dependencies
-|- README.md                  root overview
-|- ARCHITECTURE.md            repo architecture overview
-```
+This project adheres to the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
+By participating, you are expected to uphold this code.
 
-## Setup
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11+ and Node.js 22+
+- Git with signed commits recommended
+- Docker (optional, for integration testing)
+
+### Setup
 
 ```bash
 git clone https://github.com/gaurav-3821/NEXUS-R.git
-cd NEXUS-R/nexus-r
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e ".[dev]"
+cd NEXUS-R
+make setup
 ```
 
-Current package metadata requires Python `>=3.11`.
+This installs all dependencies, configures pre-commit hooks, and verifies your environment.
 
-## Common Commands
+## Development Workflow
+
+### 1. Create a Branch
 
 ```bash
-pytest tests/unit -v
-pytest tests/integration -v
-pytest tests/security -v
-pytest tests/stress -v
-pytest tests/failure -v
+git checkout -b feature/your-feature-name
 ```
 
-Frontend source:
+Branch naming conventions:
+- `feature/description` -- New features
+- `fix/description` -- Bug fixes
+- `docs/description` -- Documentation changes
+- `refactor/description` -- Code refactoring
+- `test/description` -- Test additions/improvements
+
+### 2. Make Changes
+
+- Follow [code standards](#code-standards)
+- Add/update tests as needed
+- Update documentation if behavior changes
+
+### 3. Verify
 
 ```bash
-cd frontend
-npm install
-npm run dev
+make lint        # Must pass
+make typecheck   # Must pass
+make test        # All tests must pass (backend + frontend)
+make security    # No new vulnerabilities
 ```
 
-Frontend production build:
+### 4. Commit
+
+We use [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add OpenRouter reasoning support
+fix: correct tier escalation edge case
+docs: update API endpoint documentation
+test: add property-based tests for routing
+refactor: extract route handlers from app.py
+chore: update dependency versions
+```
+
+### 5. Push and Create PR
 
 ```bash
-cd frontend
-npm run build
+git push origin feature/your-feature-name
 ```
 
-## Contribution Rules
+Then open a Pull Request using the provided template.
 
-- Keep product code, generated assets, and documentation changes logically
-  grouped.
-- Do not silently rewrite unrelated files already modified in the worktree.
-- If a doc claim conflicts with package metadata or tests, update the doc or
-  call out the mismatch explicitly.
-- Treat generated reports and exported PDFs as reference artifacts, not as the
-  primary source of truth.
-- Prefer small, reviewable diffs over broad rewrites.
+## Code Standards
 
-## Documentation Expectations
+### Python
 
-Update these when relevant:
+- **Formatter**: Ruff (replaces black + isort)
+- **Linter**: Ruff
+- **Type Checker**: MyPy (strict mode)
+- **Line Length**: 100 characters
+- **Docstrings**: Google style
+- **Type Hints**: Required on all public functions
 
-- `README.md` for repo-facing changes
-- `ARCHITECTURE.md` when module boundaries or stack assumptions change
-- `nexus-r/README.md` for package-level workflow and structure changes
-- `docs/INDEX.md` when adding or relocating major reports
+### TypeScript / Frontend
 
-## AI-Assisted Workflow
+- **Linter**: ESLint with TypeScript plugin
+- **Formatter**: Prettier
+- **Type Checker**: TypeScript strict mode
+- **Line Length**: 100 characters
+- **Component Style**: Functional components with hooks
 
-The repo includes explicit coordination files under `.nexus-intel/`.
+### Code Review Checklist
 
-- Read `.nexus-intel/README.md` and `.nexus-intel/GOVERNANCE.md` before major
-  AI-assisted work.
-- Use a bounded task file instead of mixing planning, implementation, and audit
-  into one uncontrolled change.
-- Do not treat AI-generated summaries as verified facts without source or test
-  support.
+Before requesting review, ensure:
+
+- [ ] Code follows style guidelines (lint passes)
+- [ ] All types are correct (typecheck passes)
+- [ ] Tests added/updated and passing
+- [ ] No new security vulnerabilities
+- [ ] Documentation updated if needed
+- [ ] Commit messages follow conventional format
+- [ ] PR description is complete
+
+## Testing Requirements
+
+### Coverage Thresholds
+
+| Suite | Minimum Coverage |
+|-------|-----------------|
+| Backend unit tests | 70% |
+| Backend integration tests | 60% |
+| Frontend unit tests | 60% |
+| Security tests | Must pass |
+
+### Running Tests
+
+```bash
+# Backend
+pytest tests/unit -v                    # Unit tests
+pytest tests/integration -v             # Integration tests
+pytest tests/security -v                # Security tests
+pytest tests/ -v --cov --cov-report=html # With coverage
+
+# Frontend
+npm run test:unit                       # Unit tests
+npm run test:unit -- --coverage         # With coverage
+npm run test:e2e                        # E2E tests (requires dev server)
+```
+
+## Pull Request Process
+
+1. **Open PR** using the provided template
+2. **CI must pass** -- all GitHub Actions checks green
+3. **Code review** -- at least one maintainer approval
+4. **Address feedback** -- iterate on review comments
+5. **Squash merge** -- maintain clean commit history
+
+## Release Process
+
+Releases follow [Semantic Versioning](https://semver.org/):
+
+1. Update `CHANGELOG.md`
+2. Bump version in `pyproject.toml`
+3. Create Git tag: `git tag v0.2.0`
+4. Push tag: `git push origin v0.2.0`
+5. GitHub Actions auto-publishes release
+
+## Questions?
+
+- Open a [Discussion](https://github.com/gaurav-3821/NEXUS-R/discussions)
+- Check [FAQ](docs/FAQ.md)
+- Read [Troubleshooting](docs/TROUBLESHOOTING.md)

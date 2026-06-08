@@ -1,0 +1,71 @@
+site_name: NEXUS-R Documentation
+site_description: Local-first agent runtime documentation
+site_author: Gaurav Tayde
+site_url: https://gaurav-3821.github.io/NEXUS-R
+repo_name: gaurav-3821/NEXUS-R
+repo_url: https://github.com/gaurav-3821/NEXUS-R
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+
+plugins:
+  - search
+  - minify:
+      minify_html: true
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+    - Docker: docker.md
+  - Architecture: architecture.md
+  - User Guide:
+    - Chat Interface: chat.md
+    - Model Management: models.md
+    - Settings: settings.md
+    - Memory: memory.md
+  - Development:
+    - Contributing: contributing.md
+    - Testing: testing.md
+    - API Reference: api.md
+  - Reference:
+    - FAQ: faq.md
+    - Troubleshooting: troubleshooting.md
+    - Changelog: changelog.md
+    - Roadmap: roadmap.md

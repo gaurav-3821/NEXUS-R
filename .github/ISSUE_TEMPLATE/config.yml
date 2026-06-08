@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: NEXUS-R Discussions
+    url: https://github.com/gaurav-3821/NEXUS-R/discussions
+    about: Ask questions and discuss features
+  - name: NEXUS-R FAQ
+    url: https://github.com/gaurav-3821/NEXUS-R/blob/main/docs/FAQ.md
+    about: Frequently asked questions

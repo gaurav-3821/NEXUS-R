@@ -1,0 +1,36 @@
+name: Question
+description: Ask a question about NEXUS-R
+title: "[Question]: "
+labels: [question]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? Try checking the [FAQ](https://github.com/gaurav-3821/NEXUS-R/blob/main/docs/FAQ.md) and [Troubleshooting](https://github.com/gaurav-3821/NEXUS-R/blob/main/docs/TROUBLESHOOTING.md) guides first.
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have checked the FAQ and Troubleshooting guides
+          required: true
+        - label: I have searched existing issues (open and closed)
+          required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      placeholder: "How do I..."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to achieve? What have you tried?
+  - type: input
+    id: version
+    attributes:
+      label: NEXUS-R Version
+      placeholder: "0.1.0"

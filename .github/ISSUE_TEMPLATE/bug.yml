@@ -1,0 +1,77 @@
+name: Bug Report
+description: File a bug report
+title: "[Bug]: "
+labels: [bug, triage]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report!
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm before submitting
+      options:
+        - label: I have searched existing issues (open and closed)
+          required: true
+        - label: I am running the latest version
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: NEXUS-R Version
+      description: Run `nexus --version` or check `pyproject.toml`
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened? What did you expect to happen?
+      placeholder: Clear and concise description
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: From `~/.nexus/logs/` or browser console
+      render: shell
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (Ubuntu/Debian)
+        - Linux (Fedora/RHEL)
+        - Linux (Arch)
+        - Windows (WSL2)
+        - Windows (Native)
+        - Docker
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose
+        - Manual (pip install)
+        - Development (editable install)
+    validations:
+      required: true
