@@ -136,7 +136,7 @@ class ChatHandler:
         self.widget_registry.register(CalculatorWidget(self.calculator))
         self.widget_registry.register(StockWidget())
         self.widget_registry.register(CitationWidget())
-        # self.widget_registry.register(RouterDecisionWidget())
+        self.widget_registry.register(RouterDecisionWidget())
         self.widget_registry.register(ModelStatusWidget())
         self.widget_registry.register(MemoryWidget())
         self.widget_registry.register(CostAnalyticsWidget())
@@ -916,10 +916,14 @@ When you output a `browser_action`, the system will execute it on the page, chec
         def _strip_thinking_tags(s: str) -> str:
             return s.replace("<thinking>", "").replace("</thinking>", "").replace("<think>", "").replace("</think>", "")
         
+        last_model_name = ""
         try:
             async for chunk in self.router.stream(intent, preferred):
                 text = chunk.get("text", "")
                 rt = chunk.get("reasoning_tokens")
+                model_name = chunk.get("model_name")
+                if model_name:
+                    last_model_name = model_name
                 if rt is not None:
                     reasoning_tokens = rt
                     
@@ -1010,10 +1014,11 @@ When you output a `browser_action`, the system will execute it on the page, chec
             yield f"data: {json.dumps({'type': 'error', 'value': str(e)})}\n\n"
             return
         latency = (datetime.now(timezone.utc) - started).total_seconds() * 1000
-        provider = preferred.split("/")[0] if "/" in preferred else "ollama"
+        actual_model = last_model_name or preferred
+        provider = actual_model.split("/")[0] if "/" in actual_model else "ollama"
         
         metadata = {
-            "model": preferred,
+            "model": actual_model,
             "provider": provider,
             "route": route_name,
             "latency_ms": latency,

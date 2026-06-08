@@ -90,7 +90,7 @@ class ModelRegistry:
         self._last_model_reason = ''
         self._sentence_transformer_model = None
         self._sentence_transformer_loaded = False
-        self._anchor_embeddings = {}
+        self._anchor_embeddings: dict[str, dict[str, list[list[float]]]] = {}
         # --- Latency optimization caches ---
         self._local_ready_cache: bool | None = None
         self._local_ready_cache_time: float = 0.0
@@ -571,33 +571,30 @@ class ModelRegistry:
                 from sentence_transformers import SentenceTransformer
                 self._sentence_transformer_model = SentenceTransformer('all-MiniLM-L6-v2')
                 self._sentence_transformer_loaded = True
-                logger.info("SentenceTransformer (all-MiniLM-L6-v2) successfully loaded.")
             except ImportError:
                 self._sentence_transformer_loaded = False
             except Exception as e:
-                logger.warning(f"Failed to initialize sentence-transformers: {e}")
+                logger.warning("Failed to init sentence-transformers: %s", e)
                 self._sentence_transformer_loaded = False
 
         if self._sentence_transformer_loaded and self._sentence_transformer_model:
             try:
-                embedding = self._sentence_transformer_model.encode(text).tolist()
-                return embedding
+                return self._sentence_transformer_model.encode(text).tolist()
             except Exception as e:
-                logger.warning(f"SentenceTransformer encoding failed: {e}")
+                logger.warning("SentenceTransformer encoding failed: %s", e)
 
-        # Mode 2: Ollama Embeddings API
         try:
             BackendManager.get_instance().ensure_running()
             api_base = BackendManager.get_instance().base_url
         except Exception:
             api_base = self.config.models.local_api_base
-            
+
         active_model = self.config.models.local_model.replace("ollama/", "")
         candidate_models = [active_model] + local_models + ["gemma2:9b", "llama3.2:3b", "qwen2.5:1.5b-instruct"]
-        
+
         seen = set()
         embed_models = [m for m in candidate_models if not (m in seen or seen.add(m))]
-        
+
         for m in embed_models:
             m_clean = m.replace("ollama/", "")
             try:
@@ -612,7 +609,6 @@ class ModelRegistry:
                         return embeddings[0]
             except Exception:
                 pass
-
             try:
                 response = httpx.post(
                     f"{api_base}/api/embeddings",
@@ -625,7 +621,6 @@ class ModelRegistry:
                         return embedding
             except Exception:
                 pass
-                
         return [0.0] * 384
 
     def _get_available_models(self) -> list[str]:
@@ -668,99 +663,61 @@ class ModelRegistry:
         return self._local_ready_cache
 
     def _get_dynamic_local_model(self, prompt: str) -> str:
+        from nexus_r.routing import route_query
+
         available_models = self._get_available_models()
 
+        def _normalize_model_name(name: str) -> str:
+            """Strip .gguf suffix and path prefixes to get the base model name."""
+            name = name.replace("\\", "/")
+            name = name.rsplit("/", 1)[-1]
+            if name.lower().endswith(".gguf"):
+                name = name[:-5]
+            return name
+
         def find_model(target: str, keyword: str) -> str | None:
+            target_norm = _normalize_model_name(target)
             for m in available_models:
-                if keyword in m:
+                m_norm = _normalize_model_name(m)
+                if keyword in m_norm or keyword in m:
                     return f"ollama/{m}"
+            if target_norm in available_models:
+                return f"ollama/{target_norm}"
             if target in available_models:
                 return f"ollama/{target}"
             return None
 
-        # ═══════════════════════════════════════════════════════
-        # HEURISTICS PRE-ROUTING STAGE (Fast, low-overhead bypass)
-        # ═══════════════════════════════════════════════════════
+        decision = route_query(prompt, has_cloud=False)
 
-        prompt_lower = prompt.lower()
-        word_count = len(prompt.split())
+        # Keyword-based routing — try to resolve the decision to a model
+        if decision.tier == "T2":
+            for target, keyword in [
+                ("antigravity-coder:latest", "antigravity-coder"),
+                ("qwen2.5-coder:7b", "qwen2.5-coder"),
+                ("qwen2.5-coder:1.5b", "qwen2.5-coder"),
+                ("deepseek-r1:8b", "deepseek-r1"),
+                ("gemma2:9b", "gemma2"),
+                ("llama3.2:3b", "llama3.2"),
+            ]:
+                result = find_model(target, keyword)
+                if result:
+                    self._last_model_reason = f"{decision.reason} → {result}"
+                    return result
 
-        # Heuristic 1: Simple greeting/short acknowledgments
-        trivial_patterns = [
-            'hi', 'hello', 'hey', 'thanks', 'thank you', 'ok', 'okay', 'bye',
-            'yes', 'no', 'sure', 'good morning', 'good night', 'how are you',
-            'lol', 'haha', 'cool', 'nice', 'great', 'awesome', 'wow', 'help',
-            'please',
-        ]
-        if word_count <= 5 and prompt_lower.strip().rstrip('!?.') in trivial_patterns:
-            result = find_model("gemma2:9b", "gemma2") or find_model("llama3.2:3b", "llama3.2")
-            if result:
-                self._last_model_reason = "Heuristic match (Trivial Greeting) → default chat model"
-                return result
-
-        # Heuristic 2: Explicit Code blocks syntax in prompt
-        if "```" in prompt:
-            result = find_model("antigravity-coder:latest", "antigravity-coder") or find_model("qwen2.5-coder:7b", "qwen2.5-coder")
-            if result:
-                self._last_model_reason = "Heuristic match (Code Syntax Block detected) → specialized code model"
-                return result
-
-        # Heuristic 3: Very long prompts (summarization/complex writing prompts)
-        if word_count > 250:
-            result = find_model("gemma2:9b", "gemma2")
-            if result:
-                self._last_model_reason = f"Heuristic match (Long Prompt: {word_count} words) → high-capacity model"
-                return result
-
-        # Heuristic 4: Keyword-based coding detection (avoids embedding computation)
-        code_keywords = {'python', 'javascript', 'typescript', 'code', 'function', 'error', 'bug',
-                         'fix', 'implement', 'class', 'variable', 'loop', 'array', 'list', 'dict',
-                         'string', 'int', 'float', 'return', 'print', 'async', 'await', 'html',
-                         'css', 'react', 'api', 'sql', 'database', 'git', 'compile', 'runtime',
-                         'syntax', 'import', 'module', 'package', 'npm', 'pip', 'docker',
-                         'debug', 'trace', 'exception', 'stack'}
-        prompt_words_lower = set(w.lower().strip('.,;:!?()[]{}') for w in words)
-        code_overlap = prompt_words_lower & code_keywords
-        if len(code_overlap) >= 2:
-            result = find_model("antigravity-coder:latest", "antigravity-coder") or find_model("qwen2.5-coder:7b", "qwen2.5-coder")
-            if result:
-                self._last_model_reason = f"Heuristic match (Code Keywords: {', '.join(list(code_overlap)[:3])}) → code model"
-                return result
-
-        # Heuristic 5: Keyword-based math/reasoning detection
-        math_keywords = {'calculate', 'solve', 'equation', 'integral', 'derivative', 'sum',
-                         'average', 'median', 'probability', 'statistics', 'theorem', 'proof',
-                         'formula', 'algebra', 'geometry', 'calculus', 'matrix', 'vector'}
-        math_overlap = prompt_words_lower & math_keywords
-        if len(math_overlap) >= 1:
-            result = find_model("deepseek-r1:8b", "deepseek-r1")
-            if result:
-                self._last_model_reason = f"Heuristic match (Math Keywords: {', '.join(list(math_overlap)[:3])}) → reasoning model"
-                return result
-
-        # Heuristic 6: Short conversational messages (< 8 words, no technical content)
-        if word_count <= 8 and not code_overlap and not math_overlap:
-            result = find_model("gemma2:9b", "gemma2") or find_model("llama3.2:3b", "llama3.2")
-            if result:
-                self._last_model_reason = "Heuristic match (Short Conversational) → default chat model"
-                return result
-
-        # Determine the current embedding mode and cache key
-
-        # Determine the current embedding mode and cache key
+        # Semantic fallback — use embeddings when keywords are inconclusive
+        mode_key = None
         if self._sentence_transformer_loaded:
             mode_key = "sentence_transformers"
         else:
             active_model = self.config.models.local_model.replace("ollama/", "")
-            candidate_models = [active_model] + available_models + ["gemma2:9b", "llama3.2:3b", "qwen2.5:1.5b-instruct"]
-            mode_key = "ollama_fallback"
-            for m in candidate_models:
+            for m in [active_model] + available_models + ["gemma2:9b", "llama3.2:3b", "qwen2.5:1.5b-instruct"]:
                 m_clean = m.replace("ollama/", "")
                 if m_clean in available_models:
                     mode_key = f"ollama_{m_clean}"
                     break
+            if mode_key is None:
+                mode_key = "ollama_fallback"
 
-        # Warm up/compute anchor embeddings if not already cached for this mode_key
         if mode_key not in self._anchor_embeddings:
             self._anchor_embeddings[mode_key] = {}
             for cat_name, cat_info in self._semantic_categories.items():
@@ -772,40 +729,33 @@ class ModelRegistry:
                 if cat_vectors:
                     self._anchor_embeddings[mode_key][cat_name] = cat_vectors
 
-        # Semantic Similarity Routing
+        prompt_vector = self._get_embedding(prompt, available_models)
         best_category = None
         best_score = -1.0
-        scores = {}
-        
-        prompt_vector = self._get_embedding(prompt, available_models)
-        
+
         if prompt_vector and any(v != 0.0 for v in prompt_vector) and mode_key in self._anchor_embeddings:
             for cat_name, cat_vectors in self._anchor_embeddings[mode_key].items():
-                cat_similarities = []
-                for vec in cat_vectors:
-                    sim = self._compute_cosine_similarity(prompt_vector, vec)
-                    cat_similarities.append(sim)
-                
-                if cat_similarities:
-                    max_sim = max(cat_similarities)
-                    avg_top = sum(sorted(cat_similarities, reverse=True)[:2]) / min(2, len(cat_similarities))
+                scores = [self._compute_cosine_similarity(prompt_vector, vec) for vec in cat_vectors]
+                if scores:
+                    max_sim = max(scores)
+                    avg_top = sum(sorted(scores, reverse=True)[:2]) / min(2, len(scores))
                     score = 0.7 * max_sim + 0.3 * avg_top
-                    scores[cat_name] = score
                     if score > best_score:
                         best_score = score
                         best_category = cat_name
 
-        # Routing decision based on similarity scores
-        # Confidence threshold: 0.40
         if best_category and best_score >= 0.40:
             cat_info = self._semantic_categories[best_category]
             result = find_model(cat_info["default_model"], cat_info["model_keyword"])
             if result:
-                self._last_model_reason = f"Semantic match ({best_score:.2f}) to {cat_info['reason_name']} category → {best_category}"
+                self._last_model_reason = f"Semantic match ({best_score:.2f}) → {cat_info['reason_name']} → {result}"
                 return result
 
-        # Fallback to configured model
-        self._last_model_reason = "Semantic match low/absent → fallback to default model"
+        if available_models:
+            self._last_model_reason = f"{decision.reason} (no semantic match) → {available_models[0]}"
+            return f"ollama/{available_models[0]}"
+
+        self._last_model_reason = f"{decision.reason} → configured default"
         fallback_model = self.config.models.local_model
         if not fallback_model.startswith("ollama/"):
             fallback_model = f"ollama/{fallback_model}"
@@ -829,10 +779,7 @@ class ModelRegistry:
                 api_base = self.config.models.local_api_base
 
             if provider is self.local:
-                if "auto" in self.config.models.local_model.lower():
-                    provider.name = self._get_dynamic_local_model(prompt)
-                else:
-                    provider.name = self.config.models.local_model
+                provider.name = self._get_dynamic_local_model(prompt)
                 if not provider.name.startswith("ollama/"):
                     provider.name = f"ollama/{provider.name}"
                 # If the configured model doesn't exist on this machine, fallback to first available
@@ -988,10 +935,7 @@ class ModelRegistry:
                 raise self._classify_provider_error(e, provider)
             return
         if provider is self.local:
-            if "auto" in self.config.models.local_model.lower():
-                provider.name = self._get_dynamic_local_model(prompt)
-            else:
-                provider.name = self.config.models.local_model
+            provider.name = self._get_dynamic_local_model(prompt)
             if not provider.name.startswith("ollama/"):
                 provider.name = f"ollama/{provider.name}"
             available_local = self._get_available_models()
@@ -1284,9 +1228,7 @@ class ModelRegistry:
         return max(provider.estimated_cost, total_tokens * (provider.estimated_cost / 1000.0))
 
     async def warm_up(self) -> None:
-        # Trigger embedder warmup
         self._get_embedding("warm-up", [])
-        
         if not self.local.available():
             return
         if self.telemetry is not None:

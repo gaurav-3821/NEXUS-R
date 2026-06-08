@@ -1094,7 +1094,7 @@ class ModelManager:
                 else:
                     info = CLOUD_PROVIDER_MAP.get(cloud_provider)
                     if info:
-                        self.config.models.byok_model = info["model"]
+                        self.config.models.byok_model = info.get("model", "")
                         self.config.models.byok_secret_name = info["secret_name"]
                         self.config.models.byok_api_key_env = info["env_var"]
 

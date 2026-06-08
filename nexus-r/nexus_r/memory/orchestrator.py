@@ -27,7 +27,7 @@ class ModelOrchestrator:
         self.models = model_registry
         self._ring_max = 6  # 3 user + 3 assistant turns
 
-    async def execute_turn(self, user_input: str, state: BlackboardState) -> BlackboardState:
+    async def execute_turn(self, user_input: str, state: BlackboardState, preferred: str = "auto") -> BlackboardState:
         """Process one conversational turn: update state, build prompt, call model, return updated state."""
         # 1. Append user turn to ring buffer
         state.chat_ring.append(f"User: {user_input}")
@@ -37,7 +37,7 @@ class ModelOrchestrator:
         prompt = await self._build_prompt(state, user_input)
 
         # 3. Call ModelRegistry (reuses existing heuristic+semantic+provider-chain routing)
-        result = await self.models.complete(prompt=prompt, preferred="auto")
+        result = await self.models.complete(prompt=prompt, preferred=preferred)
 
         # 4. Update state with response
         state.last_model_used = result.model_name
@@ -60,7 +60,7 @@ class ModelOrchestrator:
 
         return state
 
-    async def execute_turn_stream(self, user_input: str, state: BlackboardState):
+    async def execute_turn_stream(self, user_input: str, state: BlackboardState, preferred: str = "auto"):
         """Like execute_turn but yields ModelStreamChunk tokens as they arrive.
 
         After iteration completes the state is automatically updated (chat_ring,
@@ -73,7 +73,7 @@ class ModelOrchestrator:
         full_text = ""
         last_model = ""
 
-        async for chunk in self.models.stream(prompt=prompt, preferred="auto"):
+        async for chunk in self.models.stream(prompt=prompt, preferred=preferred):
             full_text += chunk.text
             last_model = chunk.model_name
             yield chunk

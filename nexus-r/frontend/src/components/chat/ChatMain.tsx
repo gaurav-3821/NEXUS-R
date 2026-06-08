@@ -144,6 +144,11 @@ export default function ChatMain() {
                   <div className="flex items-center gap-2 mb-2 text-sm font-semibold text-accent-600">
                     <span>{APP_NAME}</span>
                     <Bot size={14} />
+                    {msg.metadata?.model && (
+                      <span className="text-[11px] font-mono font-normal text-gray-400 dark:text-slate-500 ml-1 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded-full truncate max-w-[160px]">
+                        {msg.metadata.model.split('/').pop()} · {msg.metadata.route}
+                      </span>
+                    )}
                   </div>
                 )}
                 

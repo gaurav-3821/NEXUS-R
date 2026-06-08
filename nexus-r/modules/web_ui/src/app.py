@@ -872,7 +872,30 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
 
         # Inject research context when search is enabled
         user_message = request.message
-        route_name = "auto"
+        preferred = "auto"
+        _has_cloud = _secret_registry is not None and bool(
+            _secret_registry.get_secret("openrouter_api_key") or
+            _secret_registry.get_secret("groq_api_key") or
+            os.environ.get("NEXUS_OPENROUTER_API_KEY") or
+            os.environ.get("NEXUS_BYOK_API_KEY")
+        )
+        if not request.model:
+            from nexus_r.routing import route_query
+            _route_decision = route_query(request.message, has_cloud=_has_cloud)
+            if _route_decision.kind == "byok":
+                preferred = "byok"
+        else:
+            from nexus_r.routing import RouteDecision
+            preferred = request.model
+            _q = request.model.lower()
+            if "ollama/" in _q:
+                _route_decision = RouteDecision("T1", "local", 0.001, f"User selected {request.model}")
+            elif "groq/" in _q:
+                _route_decision = RouteDecision("T3", "byok", 0.02, f"User selected {request.model}")
+            elif "/" in _q:
+                _route_decision = RouteDecision("T4", "byok", 0.10, f"User selected {request.model}")
+            else:
+                _route_decision = RouteDecision("T1", "local", 0.001, f"User selected {request.model}")
         research_sources: list[tuple[str, str, str]] = []
         if request.search_enabled and request.mode != "speed" and _chat_handler is not None:
             try:
@@ -913,6 +936,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                 async for chunk in _orchestrator.execute_turn_stream(
                     user_input=user_message,
                     state=state,
+                    preferred=preferred,
                 ):
                     if chunk.text:
                         full_text += chunk.text
@@ -926,15 +950,20 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                 latency_ms = (datetime.now(timezone.utc) - started).total_seconds() * 1000
                 model_name = last_model or state.last_model_used or ""
                 provider = model_name.split("/")[0] if "/" in model_name else "ollama"
+                route_tier = _route_decision.tier if _route_decision is not None else "T1"
+                route_cost = _route_decision.cost if _route_decision is not None else 0.001
                 metadata = {
                     "model": model_name,
                     "provider": provider,
-                    "route": route_name,
+                    "route": route_tier,
                     "latency_ms": latency_ms,
-                    "cost": 0.0,
+                    "cost": route_cost,
                 }
                 if reasoning_tokens is not None:
                     metadata["reasoning_tokens"] = reasoning_tokens
+
+                # Emit router decision widget so frontend shows the model/tier/cost card
+                yield f"data: {json.dumps({'type': 'widget', 'widget_type': 'router_decision', 'data': {'model': model_name, 'tier': route_tier, 'estimated_cost': route_cost}, 'title': 'Router Decision'})}\n\n"
 
                 # Persist conversation to event store
                 if _chat_handler is not None and hasattr(_chat_handler, 'event_store'):
