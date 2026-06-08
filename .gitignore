@@ -99,5 +99,37 @@ Modelfile
 .DS_Store
 Thumbs.db
 
+# ─── AI agent / audit artifacts ───
+.nexus-intel/
+
+# ─── Backup / orig files ───
+*.orig.txt
+*.orig
+
+# ─── Temp data files ───
+api_test_results.json
+app_js_logs.txt
+server_err.*
+server_out.*
+
+# ─── Chat audit exports ───
+chat-Audit*.txt
+
+# ─── Browser test artifacts ───
+check_browser.js
+test_*.js
+
+# ─── ChromaDB vector store (generated data) ───
+chroma_db/
+
+# ─── UI design mockups ───
+nexus-r UI design/
+
+# ─── Large binary / reference docs ───
+*.pdf
+*.docx
+*.zip
+nexus_r_corrected_benchmark_v3.png
+
 # ─── Misc ───
 .gitkeep
