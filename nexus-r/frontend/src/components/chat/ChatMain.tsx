@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { APP_NAME } from '../../constants';
-import { RefreshCw, Sparkles, Bot, ThumbsUp, ThumbsDown, Undo, Copy, Check, Loader2 } from 'lucide-react';
+import { RefreshCw, Bot, ThumbsUp, ThumbsDown, Undo, Copy, Check, Loader2 } from 'lucide-react';
 import ChatInput from './ChatInput';
 import ChatToolbar from './ChatToolbar';
 import WidgetDispatcher from './widgets';
@@ -15,13 +15,38 @@ import rehypeKatex from 'rehype-katex';
 export default function ChatMain() {
   const { messages, revertMessage, recordMessageFeedback, setChatInput, isSidebarOpen } = useAppStore();
   const { compactMode, showResponseMetadata } = useAppearanceStore();
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [revertingId, setRevertingId] = useState<string | null>(null);
 
+  // Track whether streaming is active (affects scroll behavior)
+  const isStreamingRef = useRef(false);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    isStreamingRef.current = messages.some((m) => m.streaming);
   }, [messages]);
+
+  // Detect user manually scrolling away from bottom
+  const handleScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const threshold = 100;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    setUserScrolledUp(!isNearBottom);
+  };
+
+  // Auto-scroll when new content arrives (unless user scrolled up)
+  useEffect(() => {
+    if (userScrolledUp) return;
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: isStreamingRef.current ? 'auto' : 'smooth',
+      });
+    });
+  }, [messages, userScrolledUp]);
 
   const handleRevert = async (messageId: string) => {
     setRevertingId(messageId);
@@ -48,7 +73,7 @@ export default function ChatMain() {
 
 
       {/* Messages Scroll Area */}
-      <div className={clsx("flex-1 overflow-y-auto w-full scroll-smooth", messages.length === 0 ? "pt-8 pb-8" : (compactMode ? "pt-4 pb-44" : "pt-8 pb-44"))}>
+      <div ref={messagesContainerRef} onScroll={handleScroll} className={clsx("flex-1 overflow-y-auto w-full", messages.length === 0 ? "pt-8 pb-8" : (compactMode ? "pt-4 pb-44" : "pt-8 pb-44"))}>
         <div className={clsx("max-w-4xl mx-auto px-4 flex flex-col", compactMode ? "gap-4" : "gap-10")}>
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center flex-1 min-h-[60vh] text-center pb-32 md:pb-40">
@@ -260,7 +285,6 @@ export default function ChatMain() {
               </div>
             </div>
           ))}
-          <div ref={messagesEndRef} />
         </div>
       </div>
 
