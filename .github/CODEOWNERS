@@ -1,0 +1,16 @@
+# Global fallback
+global/                       @gaurav-3821
+
+# Core runtime
+nexus-r/foundation/nexus_r/   @gaurav-3821
+nexus-r/modules/*/src/        @gaurav-3821
+
+# Frontend
+nexus-r/frontend/src/         @gaurav-3821
+
+# Specifications (require review)
+*.spec.md                     @gaurav-3821
+nexus-r/specs/                @gaurav-3821
+
+# CI/CD and infrastructure
+.github/workflows/            @gaurav-3821

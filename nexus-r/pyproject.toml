@@ -40,3 +40,64 @@ nexus_r = "foundation/nexus_r"
 [tool.setuptools.packages.find]
 where = ["foundation", "."]
 include = ["nexus_r*", "modules*"]
+
+# ─── Ruff ───
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [
+    "modules/web_ui/src/static",
+    ".concurrency-stress*",
+    ".etd-baseline-tmp",
+    ".long-running-validation",
+    ".long-soak",
+    ".phase-c",
+    "scripts/",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "C4", "SIM",
+    "TCH", "T20", "RET", "SLF", "RUF",
+]
+ignore = ["T201", "UP040"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["nexus_r", "modules"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ─── MyPy ───
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+exclude = ["modules/web_ui/src/static", "tests/", "scripts/"]
+
+# ─── Coverage ───
+[tool.coverage.run]
+source = ["foundation", "modules"]
+omit = ["*/tests/*", "*/static/*", "*/scripts/*", "conftest.py"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 70.0
+precision = 1
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+# ─── Bandit ───
+[tool.bandit]
+exclude_dirs = ["tests", "scripts"]
+skips = ["B101", "B311"]

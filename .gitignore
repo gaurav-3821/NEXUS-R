@@ -1,41 +1,103 @@
+# ─── Python ───
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# ─── Testing ───
 .pytest_cache/
 .coverage
 .coverage.*
-.venv/
-dist/
-build/
-node_modules/
+coverage.xml
+htmlcov/
+.tox/
+
+# ─── Type checking ───
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+
+# ─── IDE ───
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ─── Environment ───
+.env
+.env.local
+
+# ─── Database ───
 *.db
 *.sqlite
 *.sqlite3
-.mypy_cache/
-.ruff_cache/
-.nexus-r/
+
+# ─── Frontend build artifacts ───
+node_modules/
 .vite/
 nexus-r/frontend/.vite/
-.vendor/
-.benchmark-workspace/
-.failure-workspace/
-.validation-workspace/
-test.txt
-.test-tmp/
-execution plan with prompts.pdf
-htmlcov/
-*.log
+nexus-r/frontend/dist/
+nexus-r/frontend/node_modules/
 
-# Secrets and build artifacts
-.nexus_token
-*.egg-info/
+# ─── Project state ───
+.nexus-r/
+.vendor/
 desktop-app/
 
-# Scratch scripts
+# ─── Temporary / validation directories ───
+.concurrency-stress/
+.concurrency-stress-v2/
+.etd-baseline-tmp/
+.long-running-validation/
+.long-soak/
+.phase-c/
+.benchmark-workspace/
+.benchmark-workspace*/
+.failure-workspace/
+.validation-workspace/
+.test-tmp/
+
+# ─── Secrets ───
+.nexus_token
+
+# ─── Debug / utility scripts ───
 patch_*.py
 verify_*.py
 test_chat.py
 test_routing_pipeline.py
 run_tests.py
-Modelfile
+nexus-r/append_css.py
+nexus-r/debug_js.py
+nexus-r/replace_html.py
+nexus-r/update_css.py
+nexus-r/test_*.py
+nexus-r/backend_test.py
+nexus-r/start_backend.py
+nexus-r/take_screenshot*.py
+nexus-r/trigger.py
+
+# ─── Reports and generated files ───
+*.log
+nexus-r/api_test_results.json
+nexus-r/output.txt
+nexus-r/test.json
+nexus-r/validation.png
+nexus-r/app_js_logs.txt
+test.txt
 test.json.txt
+Modelfile
+
+# ─── OS ───
+.DS_Store
+Thumbs.db
+
+# ─── Misc ───
 .gitkeep

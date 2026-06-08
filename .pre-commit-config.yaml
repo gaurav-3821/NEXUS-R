@@ -1,0 +1,54 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.0
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^nexus-r/
+      - id: ruff-format
+        files: ^nexus-r/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [types-requests]
+        files: ^nexus-r/
+        args: [--ignore-missing-imports]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml"]
+        files: ^nexus-r/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: forbid-submodules
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: Frontend ESLint
+        entry: bash -c 'cd nexus-r/frontend && npm run lint'
+        language: system
+        files: ^nexus-r/frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: frontend-typecheck
+        name: Frontend Type Check
+        entry: bash -c 'cd nexus-r/frontend && npx tsc --noEmit'
+        language: system
+        files: ^nexus-r/frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false

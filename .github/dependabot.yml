@@ -1,0 +1,45 @@
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /nexus-r
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    reviewers:
+      - gaurav-3821
+
+  - package-ecosystem: npm
+    directory: /nexus-r/frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    reviewers:
+      - gaurav-3821
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: chore(deps)
+      include: scope

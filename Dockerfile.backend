@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+COPY pyproject.toml ./
+COPY foundation/ ./foundation/
+COPY modules/ ./modules/
+
+RUN uv pip install --system -e ".[dev]" --no-cache
+
+FROM python:3.11-slim AS runtime
+
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsqlite3-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+COPY foundation/ ./foundation/
+COPY modules/ ./modules/
+COPY pyproject.toml ./
+COPY pytest.ini ./
+
+RUN groupadd -r nexus && useradd -r -g nexus nexus
+RUN mkdir -p /data && chown nexus:nexus /data
+USER nexus
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "modules.web_ui.src.app:app", "--host", "0.0.0.0", "--port", "8000"]
