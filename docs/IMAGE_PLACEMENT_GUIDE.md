@@ -6,24 +6,24 @@ This document specifies where to place images referenced in NEXUS-R documentatio
 
 ```
 docs/assets/
-  nexus-r-banner.png          # 800×200, used in README header
-  nexus-r-dashboard-preview.png  # ~1200×800, used in README Overview
-  architecture-diagram.png    # ~1200×600, used in README Architecture
-  quickstart-wizard.gif       # ~800×500, used in README First Run
-  screenshot-chat.png         # ~1200×800, used in README Chat
-  screenshot-models.png       # ~1200×800, used in README Models
-  screenshot-settings.png     # ~1200×800, used in README Settings
+  ss-chat.png             # Chat interface
+  ss-chat-model.png       # Model picker within chat
+  ss-models.png           # Models settings tab
+  ss-model-discovery.png  # Model discovery center
+  ss-appearance.png       # Appearance settings
+  ss-api-keys.png         # API key configuration
+  ss-about.png            # About page
+  ss-agent-tools.png      # Agent tool configuration
+  ss-memory.png           # Memory settings tab
+  nexus-r-banner.png      # README header banner (optional)
 ```
 
 ## Image Specifications
 
-| Image | Format | Max Width | Max Size | DPI |
-|-------|--------|-----------|----------|-----|
-| Banner | PNG | 800px | 200KB | 72 |
-| Dashboard preview | PNG | 1200px | 500KB | 72 |
-| Architecture diagram | PNG | 1200px | 500KB | 72 |
-| Animated demo | GIF | 800px | 2MB | 72 |
-| Screenshots | PNG | 1200px | 500KB | 72 |
+| Image | Format | Max Size | DPI |
+|-------|--------|----------|-----|
+| Screenshots | PNG | 500KB | 72 |
+| Banner | PNG | 200KB | 72 |
 
 ## Naming Convention
 

@@ -223,13 +223,23 @@ nexus run "list Python files in this project"
 ## Screenshots
 
 <div align="center">
-  <img src="docs/assets/screenshot-dashboard.png" alt="Dashboard" width="70%"/>
-  <br/><br/>
-  <img src="docs/assets/screenshot-chat.png" alt="Chat Interface" width="70%"/>
-  <br/><br/>
-  <img src="docs/assets/screenshot-models.png" alt="Model Management" width="70%"/>
-  <br/><br/>
-  <img src="docs/assets/screenshot-settings.png" alt="Settings" width="70%"/>
+  <table>
+    <tr>
+      <td><img src="docs/assets/ss-chat.png" alt="Chat Interface" width="100%"/><br/><em>Chat Interface</em></td>
+      <td><img src="docs/assets/ss-chat-model.png" alt="Model Picker in Chat" width="100%"/><br/><em>Model Picker in Chat</em></td>
+      <td><img src="docs/assets/ss-models.png" alt="Models Tab" width="100%"/><br/><em>Models Tab</em></td>
+    </tr>
+    <tr>
+      <td><img src="docs/assets/ss-model-discovery.png" alt="Model Discovery Center" width="100%"/><br/><em>Model Discovery Center</em></td>
+      <td><img src="docs/assets/ss-appearance.png" alt="Appearance Settings" width="100%"/><br/><em>Appearance Settings</em></td>
+      <td><img src="docs/assets/ss-api-keys.png" alt="API Keys" width="100%"/><br/><em>API Keys</em></td>
+    </tr>
+    <tr>
+      <td><img src="docs/assets/ss-about.png" alt="About" width="100%"/><br/><em>About</em></td>
+      <td><img src="docs/assets/ss-agent-tools.png" alt="Agent Tools" width="100%"/><br/><em>Agent Tools</em></td>
+      <td><img src="docs/assets/ss-memory.png" alt="Memory Tab" width="100%"/><br/><em>Memory Tab</em></td>
+    </tr>
+  </table>
 </div>
 
 ---

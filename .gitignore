@@ -114,6 +114,7 @@ server_out.*
 
 # ─── Chat audit exports ───
 chat-Audit*.txt
+chat-*.txt
 
 # ─── Browser test artifacts ───
 check_browser.js
