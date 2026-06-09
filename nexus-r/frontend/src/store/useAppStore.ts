@@ -231,10 +231,16 @@ export const useAppStore = create<AppState>((set, get) => ({
             set({ currentConversationId: event.conversation_id });
             get().loadConversations();
           }
+          const backendMsgId = event.message_id;
           set((s) => {
-            const updatedMsgs = s.messages.map(m => {
+            const assistIdx = s.messages.findIndex(m => m.id === msgId);
+            const updatedMsgs = s.messages.map((m, i) => {
               if (m.id === msgId) {
                 return { ...m, streaming: false, model: event.model, metadata: event.metadata };
+              }
+              // Update the preceding user message's id to match backend for revert
+              if (backendMsgId && i === assistIdx - 1 && m.role === 'user') {
+                return { ...m, id: backendMsgId };
               }
               return m;
             });

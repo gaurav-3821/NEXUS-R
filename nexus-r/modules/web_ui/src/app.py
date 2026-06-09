@@ -1005,7 +1005,7 @@ def create_app(event_store, etd_store=None, chat_handler=None, config=None, **kw
                         },
                     ))
 
-                yield f"data: {json.dumps({'type': 'done', 'model': model_name, 'metadata': metadata, 'conversation_id': conversation_id})}\n\n"
+                yield f"data: {json.dumps({'type': 'done', 'model': model_name, 'metadata': metadata, 'conversation_id': conversation_id, 'message_id': msg_id})}\n\n"
             except Exception as exc:
                 yield f"data: {json.dumps({'type': 'error', 'detail': str(exc)})}\n\n"
 
